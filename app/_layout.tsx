@@ -1,39 +1,82 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { useFonts } from 'expo-font';
+import { tokenCache } from '@/utils/cache';
+import '../global.css';
+import 'react-native-url-polyfill/auto';
+import { ClerkProvider } from '@clerk/clerk-expo';
+import { getRandomValues as expoCryptoGetRandomValues } from 'expo-crypto';
 import { Stack } from 'expo-router';
-import * as SplashScreen from 'expo-splash-screen';
+import * as React from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
-import 'react-native-reanimated';
+import { useEffect, useState } from 'react';
+import * as SplashScreen from 'expo-splash-screen';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { View, ActivityIndicator } from 'react-native';
+import ToastManager from './Toast/components/ToastManager';
 
-import { useColorScheme } from '@/hooks/useColorScheme';
+// Ensure crypto polyfill
+if (!global.crypto) {
+  global.crypto = {
+    getRandomValues: expoCryptoGetRandomValues,
+  } as Crypto;
+}
 
-// Prevent the splash screen from auto-hiding before asset loading is complete.
+// Retrieve Clerk publishable key
+const publishableKey = "pk_test_Z3Jvd24td2FscnVzLTEuY2xlcmsuYWNjb3VudHMuZGV2JA";
+if (!publishableKey) {
+  throw new Error("Missing Clerk Publishable Key");
+}
+
+// Prevent auto-hide of SplashScreen
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
-  const [loaded] = useFonts({
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
-  });
+  return (
+    <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
+      <RootLayoutNav />
+    </ClerkProvider>
+  );
+}
+
+function RootLayoutNav() {
+  const [appIsReady, setAppIsReady] = useState(false);
 
   useEffect(() => {
-    if (loaded) {
-      SplashScreen.hideAsync();
+    async function prepare() {
+      try {
+        // Perform any startup logic here (like fetching user data)
+      } catch (e) {
+        console.warn(e);
+      } finally {
+        setAppIsReady(true);
+        SplashScreen.hideAsync();
+      }
     }
-  }, [loaded]);
 
-  if (!loaded) {
-    return null;
+    prepare();
+  }, []);
+
+  if (!appIsReady) {
+    return (
+      <View className="flex-1 items-center justify-center bg-[#343541]">
+        <ActivityIndicator size="large" color="#10a37f" />
+      </View>
+    );
   }
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="+not-found" />
+    <SafeAreaProvider>
+      <StatusBar style="light" />
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: "#343541" },
+        }}
+      >
+        <Stack.Screen name="index" />         
+        <Stack.Screen name="get-started" />   
+        <Stack.Screen name="(auth)" />       
+        <Stack.Screen name="(app)" />        
       </Stack>
-      <StatusBar style="auto" />
-    </ThemeProvider>
+      <ToastManager />
+    </SafeAreaProvider>
   );
 }
