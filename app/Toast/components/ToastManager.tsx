@@ -100,22 +100,21 @@ const ToastManager: React.FC<ToastManagerProps> = ({
   textStyle = {},
   showCloseIcon,
   showProgressBar,
-  duration = 3000,
-  ...props 
-}) => {
+  duration = 3000}) => {
   const insets = useSafeAreaInsets();
-  const { isVisible, message, type, position: storePosition, duration: toastDuration, hide, config } = useToastStore();
+  const { isVisible, message, type, duration: toastDuration, hide, config } = useToastStore();
   const progressAnim = useRef(new Animated.Value(0)).current;
   const timeoutRef = useRef<NodeJS.Timeout>();
 
   // Use config values as fallbacks
   const finalTheme = theme ?? config.theme ?? 'dark';
   const finalPosition = toastPosition ?? config.position ?? 'top';
-  const finalWidth = width ?? config.width ?? 320;
-  const finalAnimationIn = animationIn ?? config.animationIn ?? 'slideInDown';
-  const finalAnimationOut = animationOut ?? config.animationOut ?? 'slideOutUp';
   const finalShowCloseIcon = showCloseIcon ?? config.showCloseIcon ?? true;
   const finalShowProgressBar = showProgressBar ?? config.showProgressBar ?? true;
+
+  // Add new animation ref
+  const translateY = useRef(new Animated.Value(0)).current;
+  const opacity = useRef(new Animated.Value(0)).current;
 
   const startProgressAnimation = () => {
     // Reset animation value before starting
@@ -127,18 +126,57 @@ const ToastManager: React.FC<ToastManagerProps> = ({
     }).start();
   };
 
+  const animateToast = useCallback((show: boolean) => {
+    const initialPosition = finalPosition === 'top' ? -100 : 100;
+    
+    // Reset position before showing
+    if (show) {
+      translateY.setValue(initialPosition);
+      opacity.setValue(0);
+    }
+
+    Animated.parallel([
+      Animated.spring(translateY, {
+        toValue: show ? 0 : (finalPosition === 'top' ? -100 : 100),
+        useNativeDriver: true,
+        damping: 15,
+        mass: 1,
+        stiffness: 200,
+      }),
+      Animated.timing(opacity, {
+        toValue: show ? 1 : 0,
+        duration: 200,
+        useNativeDriver: true,
+      })
+    ]).start();
+  }, [finalPosition, translateY, opacity]);
+
   useEffect(() => {
     if (isVisible) {
+      // Reset any existing timeouts and animations
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+      progressAnim.setValue(0);
+      
+      animateToast(true);
       startProgressAnimation();
-      // Use toastDuration from store instead of component prop
-      timeoutRef.current = setTimeout(hide, toastDuration);
+      timeoutRef.current = setTimeout(() => {
+        animateToast(false);
+        setTimeout(hide, 200); // Hide after animation completes
+        progressAnim.setValue(0);
+      }, toastDuration);
     }
+
     return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+      progressAnim.setValue(0);
       progressAnim.removeAllListeners();
       progressAnim.stopAnimation();
     };
-  }, [isVisible, toastDuration]);
+  }, [isVisible, toastDuration, hide, animateToast]);
 
   const calculatePosition = useCallback((position: ToastPosition, screenHeight: number): number => {
     const toastHeight = RFPercentage(9);
@@ -171,19 +209,7 @@ const ToastManager: React.FC<ToastManagerProps> = ({
   };
 
   // Update how we handle position to use the correct prop
-  const calculatedPositionValue = positionValue ?? (
-    finalPosition === "top" ? 0 : 
-    finalPosition === "center" ? height / 2 - RFPercentage(9) : 
-    height - RFPercentage(10)
-  );
 
-  const handleBar = () => {
-    Animated.timing(progressAnim, {
-      toValue: 0,
-      duration: toastDuration,
-      useNativeDriver: true
-    }).start();
-  };
 
   const hideToast = useCallback(() => {
     hide();
@@ -198,8 +224,16 @@ const ToastManager: React.FC<ToastManagerProps> = ({
 
   const resume = useCallback(() => {
     if (!isVisible) return;
-    const currentValue = progressAnim.__getValue();
+    
+    // Clear any existing timeout
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+
+    const currentValue = progressAnim.getValue();
     const remaining = toastDuration * (1 - currentValue);
+    
+    progressAnim.setValue(currentValue);
     
     Animated.timing(progressAnim, {
       toValue: 1,
@@ -207,8 +241,11 @@ const ToastManager: React.FC<ToastManagerProps> = ({
       useNativeDriver: true,
     }).start();
     
-    timeoutRef.current = setTimeout(hideToast, remaining);
-  }, [isVisible, toastDuration, progressAnim, hideToast]);
+    timeoutRef.current = setTimeout(() => {
+      hide();
+      progressAnim.setValue(0);
+    }, remaining);
+  }, [isVisible, toastDuration, progressAnim, hide]);
 
   // Update progress bar interpolation to use transform
   const progressInterpolation = progressAnim.interpolate({
@@ -219,14 +256,19 @@ const ToastManager: React.FC<ToastManagerProps> = ({
   return (
     <Modal
       animationIn="slideInDown"
-      animationOut="slideOutUp" 
-      animationInTiming={animationInTiming}
-      animationOutTiming={animationOutTiming}
+      animationOut="slideOutUp"
+      animationInTiming={1}
+      animationOutTiming={1}
       onTouchEnd={resume}
       onTouchStart={pause}
       swipeDirection={["up", "down", "left", "right"]}
       onSwipeComplete={hideToast}
-      onModalHide={hide}
+      onModalHide={() => {
+        progressAnim.setValue(0);
+        if (timeoutRef.current) {
+          clearTimeout(timeoutRef.current);
+        }
+      }}
       isVisible={isVisible}
       coverScreen={false}
       backdropColor={backdropColor}
@@ -234,7 +276,7 @@ const ToastManager: React.FC<ToastManagerProps> = ({
       hasBackdrop={hasBackdrop}
       className="m-0 justify-center items-center"
     >
-      <View
+      <Animated.View
         accessible={true}
         accessibilityRole="alert"
         accessibilityLabel={`${type} notification: ${message}`}
@@ -246,10 +288,14 @@ const ToastManager: React.FC<ToastManagerProps> = ({
         } ${
           finalTheme === 'dark' ? 'bg-[#343541]' : 'bg-white'
         }`}
-        style={{
-          top: calculatePosition(finalPosition, height),
-          ...style,
-        }}
+        style={[
+          {
+            top: calculatePosition(finalPosition, height),
+            transform: [{ translateY }],
+            opacity,
+          },
+          style,
+        ]}
       >
         <View className={`flex-row items-center p-3 gap-2 ${finalShowCloseIcon ? 'pr-9' : 'pr-3'}`}>
           <View
@@ -266,7 +312,11 @@ const ToastManager: React.FC<ToastManagerProps> = ({
             className={`flex-1 font-medium text-sm ${
               finalTheme === 'dark' ? 'text-gray-300' : 'text-gray-800'
             }`}
-            style={textStyle}
+            style={[
+              textStyle,
+              { flexWrap: 'wrap' }  // Add this to handle long text
+            ]}
+            numberOfLines={3}  // Optional: limit to 3 lines, remove if you want unlimited
           >
             {message}
           </Text>
@@ -318,7 +368,7 @@ const ToastManager: React.FC<ToastManagerProps> = ({
             </View>
           </View>
         )}
-      </View>
+      </Animated.View>
     </Modal>
   );
 };

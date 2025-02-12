@@ -1,5 +1,5 @@
 import { useSignIn, useClerk } from '@clerk/clerk-expo';
-import { ArrowLeft, X, Lock, Mail, Eye } from 'lucide-react-native';
+import { ArrowLeft, X, Lock, Mail, Eye, EyeOff } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import React from 'react';
 import {
@@ -14,12 +14,14 @@ import {
   TouchableWithoutFeedback,
   ActivityIndicator,
   Pressable,
+  SafeAreaView,
 } from 'react-native';
 import { useToast } from '../Toast/components/ToastManager';
 import { OtpInput } from "react-native-otp-entry";
 import Modal from 'react-native-modal';
 import * as SecureStore from 'expo-secure-store';
 import * as Haptics from 'expo-haptics';
+import { ErrorBoundary } from 'react-error-boundary';
 
 
 const ForgotPassword = () => {
@@ -284,92 +286,102 @@ const ForgotPassword = () => {
       </View>
     );
   }
-
   return (
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-      <View className="flex-1 bg-[#343541]">
+    <ErrorBoundary fallbackRender={({ error }) => (
+      <View className="flex-1 items-center justify-center bg-[#343541]">
+        <Text className="text-white">Something went wrong: {error.message}</Text>
+      </View>
+    )}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#343541' }}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
           className="flex-1">
-          <ScrollView
-            contentContainerStyle={{ flexGrow: 1 }}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}>
-            <View className="pt-8 px-6">
-              <TouchableOpacity
-                onPress={() => router.back()}
-                className="flex-row items-center p-3 rounded-full bg-gray-600/20 w-12 hover:bg-gray-600/30">
-                <ArrowLeft size={20} color="#9ca3af" />
-              </TouchableOpacity>
-            </View>
-
-            <View className="flex-1 justify-center py-12">
-              <View className="mb-12 px-8">
-                <Text className="mb-4 text-center text-4xl font-bold text-white">
-                  Reset Password
-                </Text>
-                <Text className="text-center text-base text-gray-300 px-4">
-                  Enter your email address and we'll send you a verification code
-                </Text>
-              </View>
-
-              <View className="space-y-6 px-8">
-                <View>
-                  <Text className="mb-3 font-medium text-gray-300 text-base">
-                    Email address
-                  </Text>
-                  <View className="relative">
-                    <Mail size={20} color="#9ca3af" style={{ position: 'absolute', left: 16, top: 18 }} />
-                    <TextInput
-                      className={`rounded-2xl border-2 ${
-                        isValidEmail ? 'border-gray-600' : 'border-red-500'
-                      } bg-gray-700/20 p-4 pl-12 text-white text-base h-14`}
-                      autoCapitalize="none"
-                      value={emailAddress}
-                      placeholder="Enter email"
-                      placeholderTextColor="#9ca3af"
-                      onChangeText={(text) => {
-                        setEmailAddress(text);
-                        setIsValidEmail(true);
-                      }}
-                      keyboardType="email-address"
-                      autoComplete="email"
-                    />
-                  </View>
-                  {!isValidEmail && (
-                    <Text className="mt-2.5 text-sm text-red-500">
-                      Please enter a valid email address
-                    </Text>
-                  )}
-                </View>
-              </View>
-
-              <View className="mt-10 px-8">
-                <TouchableOpacity
-                  className="rounded-2xl bg-[#10a37f] p-4 shadow-lg active:bg-[#0e906f] h-14 justify-center"
-                  onPress={onRequestOTP}
-                  disabled={isLoading}>
-                  {isLoading ? (
-                    <ActivityIndicator color="white" />
-                  ) : (
-                    <Text className="text-center text-lg font-semibold text-white">
-                      Send Verification Code
-                    </Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-
-              <View className="mt-8 flex-row justify-center">
-                <Text className="text-gray-300 text-base">Remember your password? </Text>
-                <Pressable onPress={() => router.replace('/(auth)/sign-in')}>
-                  <Text className="font-semibold text-[#10a37f] text-base">Sign in</Text>
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+            <ScrollView
+              contentContainerStyle={{ flexGrow: 1 }}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              bounces={false}>
+              <View className="pt-12 px-4 mb-2">
+                <Pressable 
+                  onPress={() => router.back()}
+                  className="flex-row items-center p-2 rounded-full bg-gray-600/30 w-10">
+                  <ArrowLeft size={16} color="#9ca3af" />
                 </Pressable>
               </View>
-            </View>
-          </ScrollView>
+
+              <View className="flex-1 justify-center py-2">
+                <View className="mb-6 px-6">
+                  <Text className="mb-1.5 text-center text-2xl font-bold text-white">
+                    Reset Password
+                  </Text>
+                  <Text className="text-center text-sm text-gray-300">
+                    Enter your email to receive a verification code
+                  </Text>
+                </View>
+
+                <View className="space-y-4 px-6">
+                  {/* Email Input */}
+                  <View>
+                    <Text className="mb-2.5 font-medium text-gray-300">Email address</Text>
+                    <View className="relative">
+                      <TextInput
+                        className={`w-full rounded-xl border-2 bg-transparent p-4 pl-12 text-white text-base ${
+                          isValidEmail ? 'border-gray-600' : 'border-red-500'
+                        }`}
+                        autoCapitalize="none"
+                        value={emailAddress}
+                        placeholder="Enter email"
+                        placeholderTextColor="#9ca3af"
+                        onChangeText={(text) => {
+                          setEmailAddress(text);
+                          setIsValidEmail(true);
+                        }}
+                        keyboardType="email-address"
+                      />
+                      <View className="absolute left-4 top-[17px]">
+                        <Mail size={20} color="#9ca3af" />
+                      </View>
+                    </View>
+                    {!isValidEmail && (
+                      <Text className="mt-2 text-sm text-red-500">
+                        Please enter a valid email address
+                      </Text>
+                    )}
+                  </View>
+                </View>
+
+                {/* Send Code Button */}
+                <View className="mt-6 px-6">
+                  <TouchableOpacity
+                    className={`w-full rounded-xl bg-[#10a37f] p-4 shadow-sm ${
+                      isLoading ? 'opacity-80' : 'active:bg-[#0e906f]'
+                    }`}
+                    onPress={onRequestOTP}
+                    disabled={isLoading}>
+                    {isLoading ? (
+                      <ActivityIndicator color="white" />
+                    ) : (
+                      <Text className="text-center text-base font-semibold text-white">
+                        Send Verification Code
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+
+                {/* Sign In Link */}
+                <View className="mt-4 flex-row justify-center">
+                  <Text className="text-gray-300">Remember your password? </Text>
+                  <Pressable onPress={() => router.replace('/(auth)/sign-in')}>
+                    <Text className="font-semibold text-[#10a37f]">Sign in</Text>
+                  </Pressable>
+                </View>
+              </View>
+            </ScrollView>
+          </TouchableWithoutFeedback>
         </KeyboardAvoidingView>
 
+        {/* OTP Modal */}
         <Modal
           isVisible={showOTPModal}
           statusBarTranslucent
@@ -377,112 +389,122 @@ const ForgotPassword = () => {
           onBackButtonPress={() => setShowOTPModal(false)}
           useNativeDriver
           style={{ margin: 0 }}
-          avoidKeyboard
-          animationIn="slideInUp"
-          animationOut="slideOutDown">
+          avoidKeyboard>
           <View className="flex-1 justify-end">
-            <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
-              <View className="rounded-t-3xl bg-[#343541] p-8">
-                <View className="mb-6 items-end">
-                  <TouchableOpacity 
-                    onPress={() => setShowOTPModal(false)}
-                    className="p-2 rounded-full bg-gray-700/20">
-                    <X size={24} color="#9ca3af" />
-                  </TouchableOpacity>
-                </View>
-                
-                <Text className="mb-4 text-3xl font-bold text-white">
-                  Enter Verification Code
-                </Text>
+            <View className="rounded-t-3xl bg-[#343541] p-6">
+              <View className="mb-6 items-end">
+                <Pressable 
+                  onPress={() => setShowOTPModal(false)}
+                  className="p-2 rounded-full bg-gray-600/30">
+                  <X size={16} color="#9ca3af" />
+                </Pressable>
+              </View>
 
-                <View className="mb-8">
-                  <OtpInput
-                    numberOfDigits={6}
-                    onFilled={(text) => {
-                      setCode(text);
-                      setIsOTPValid(true);
-                    }}
-                    theme={{
-                      pinCodeContainerStyle: {
-                        backgroundColor: "#40414f",
-                        borderColor: isOTPValid ? "#565869" : "#ef4444",
-                        borderRadius: 12,
-                        height: 52,
-                      },
-                      focusStickStyle: { backgroundColor: "#10a37f" },
-                      focusedPinCodeContainerStyle: {
-                        borderColor: isOTPValid ? "#10a37f" : "#ef4444",
-                      },
-                      pinCodeTextStyle: { color: "white" },
+              <Text className="mb-1.5 text-2xl font-bold text-white">
+                Verify Your Email
+              </Text>
+              <Text className="mb-6 text-sm text-gray-300">
+                Enter the verification code sent to {emailAddress}
+              </Text>
+
+              <View className="mb-8">
+                <OtpInput
+                  numberOfDigits={6}
+                  onFilled={(text) => {
+                    setCode(text);
+                    setIsOTPValid(true);
+                  }}
+                  theme={{
+                    pinCodeContainerStyle: {
+                      backgroundColor: "#40414f",
+                      borderColor: isOTPValid ? "#565869" : "#ef4444",
+                      borderRadius: 12,
+                      height: 52,
+                      borderWidth: 2,
+                    },
+                    focusStickStyle: { 
+                      backgroundColor: isOTPValid ? "#10a37f" : "#ef4444" 
+                    },
+                    focusedPinCodeContainerStyle: {
+                      borderColor: isOTPValid ? "#10a37f" : "#ef4444",
+                      borderWidth: 2,
+                    },
+                    pinCodeTextStyle: { 
+                      color: "white",
+                      fontSize: 20,
+                    },
+                  }}
+                />
+              </View>
+
+              {/* New Password Input */}
+              <View className="mb-6">
+                <Text className="mb-2.5 font-medium text-gray-300">New Password</Text>
+                <View className="relative">
+                  <TextInput
+                    className={`w-full rounded-xl border-2 bg-transparent p-4 pl-12 pr-12 text-white text-base ${
+                      isValidPassword ? 'border-gray-600' : 'border-red-500'
+                    }`}
+                    secureTextEntry={!passwordVisible}
+                    value={password}
+                    placeholder="Enter new password"
+                    placeholderTextColor="#9ca3af"
+                    onChangeText={(text) => {
+                      setPassword(text);
+                      setIsValidPassword(true);
                     }}
                   />
-                  {!isOTPValid && (
-                    <Text className="mt-2 text-sm text-red-500">
-                      Incorrect verification code. Please try again.
-                    </Text>
-                  )}
-                </View>
-
-                <View className="mb-8">
-                  <Text className="mb-3 font-medium text-gray-300 text-base">New Password</Text>
-                  <View className="relative">
-                    <Lock size={20} color="#9ca3af" style={{ position: 'absolute', left: 16, top: 18 }} />
-                    <TextInput
-                      className={`rounded-2xl border-2 ${
-                        isValidPassword ? 'border-gray-600' : 'border-red-500'
-                      } bg-gray-700/20 p-4 pl-12 pr-12 text-white h-14`}
-                      placeholder="Enter new password"
-                      placeholderTextColor="#9ca3af"
-                      secureTextEntry={!passwordVisible}
-                      value={password}
-                      onChangeText={(text) => {
-                        setPassword(text);
-                        setIsValidPassword(true);
-                        validatePassword(text);
-                      }}
-                      autoComplete="new-password"
-                    />
-                    <TouchableOpacity
-                      style={{ position: 'absolute', right: 16, top: 16 }}
-                      onPress={() => setPasswordVisible(!passwordVisible)}>
-                      <Eye size={20} color="#9ca3af" />
-                    </TouchableOpacity>
+                  <View className="absolute left-4 top-[17px]">
+                    <Lock size={20} color="#9ca3af" />
                   </View>
-                  {password && renderPasswordStrength()}
+                  <Pressable
+                    className="absolute right-4 top-[17px]"
+                    onPress={() => setPasswordVisible(!passwordVisible)}>
+                    {passwordVisible ? (
+                      <EyeOff size={20} color="#9ca3af" />
+                    ) : (
+                      <Eye size={20} color="#9ca3af" />
+                    )}
+                  </Pressable>
                 </View>
-
-                <TouchableOpacity
-                  className="rounded-2xl bg-[#10a37f] p-4 shadow-lg active:bg-[#0e906f] h-14 justify-center"
-                  onPress={onResetPassword}
-                  disabled={isLoading}>
-                  {isLoading ? (
-                    <ActivityIndicator color="white" />
-                  ) : (
-                    <Text className="text-center text-lg font-semibold text-white">
-                      Reset Password
-                    </Text>
-                  )}
-                </TouchableOpacity>
-
-                <View className="mt-8 flex-row justify-center items-center">
-                  {resendTimer > 0 ? (
-                    <Text className="text-gray-400 mr-2">
-                      Resend OTP in {resendTimer}s
-                    </Text>
-                  ) : (
-                    <TouchableOpacity onPress={handleResendOTP}>
-                      <Text className="text-[#10a37f]">
-                        Didn't receive OTP? Resend
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
+                {password && renderPasswordStrength()}
               </View>
-            </TouchableWithoutFeedback>
+
+              {/* Reset Password Button */}
+              <TouchableOpacity
+                className={`w-full rounded-xl bg-[#10a37f] p-4 shadow-sm ${
+                  isLoading ? 'opacity-80' : 'active:bg-[#0e906f]'
+                }`}
+                onPress={onResetPassword}
+                disabled={isLoading}>
+                {isLoading ? (
+                  <ActivityIndicator color="white" />
+                ) : (
+                  <Text className="text-center text-base font-semibold text-white">
+                    Reset Password
+                  </Text>
+                )}
+              </TouchableOpacity>
+
+              {/* Resend Code */}
+              <View className="mt-4 flex-row justify-center items-center">
+                {resendTimer > 0 ? (
+                  <Text className="text-gray-400">
+                    Resend code in {resendTimer}s
+                  </Text>
+                ) : (
+                  <TouchableOpacity onPress={handleResendOTP}>
+                    <Text className="text-[#10a37f]">
+                      Didn't receive code? Resend
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
           </View>
         </Modal>
-      </View>
-    </TouchableWithoutFeedback>
+      </SafeAreaView>
+    </ErrorBoundary>
   );
 };
 

@@ -11,7 +11,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { View, ActivityIndicator } from 'react-native';
 import ToastManager from './Toast/components/ToastManager';
-
+import { NetworkProvider } from './NetworkContext';
 // Ensure crypto polyfill
 if (!global.crypto) {
   global.crypto = {
@@ -30,9 +30,11 @@ SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   return (
-    <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
-      <RootLayoutNav />
-    </ClerkProvider>
+    <NetworkProvider>
+      <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
+        <RootLayoutNav />
+      </ClerkProvider>
+    </NetworkProvider>
   );
 }
 

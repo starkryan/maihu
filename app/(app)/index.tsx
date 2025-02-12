@@ -5,7 +5,6 @@ import Constants from 'expo-constants';
 import * as FileSystem from 'expo-file-system';
 import { 
   Sparkles, 
-  Settings, 
   Lightbulb,
   X,
   Copy,
@@ -15,9 +14,16 @@ import {
   Camera,
   Mic,
   ChevronRight,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Globe,
+  Clock,
+  Users,
+  Palette,
+  User,
+  Monitor,
+  Smile
 } from 'lucide-react-native';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -30,13 +36,13 @@ import {
   KeyboardAvoidingView,
   SafeAreaView,
   RefreshControl,
-  Modal
-} from 'react-native';
+  Modal} from 'react-native';
 import Markdown from 'react-native-markdown-display';
 import { useToast } from '../Toast/components/ToastManager';
 import * as MediaLibrary from 'expo-media-library';
+import * as Haptics from 'expo-haptics';
 
-import { useScriptStore } from '@/store/scriptStore';
+import { useScriptStore, languageFlags, optionIcons, optionMetadata } from '@/store/scriptStore';
 
 
 // Environment configuration (should use actual environment variables in production)
@@ -44,16 +50,17 @@ const CONFIG = {
   GEMINI_API_KEY:
     Constants.expoConfig?.extra?.GOOGLE_GEMINI_API_KEY || 'AIzaSyAs4vFUhoajF79bzBdpP1fgVNgPa8whAEU',
   COLORS: {
-    primary: '#10a37f',      // ChatGPT green
-    background: '#343541',   // Main background
-    surface: '#444654',      // Message bubbles
-    inputBg: '#40414f',      // Input background
-    border: '#565869',       // Borders
+    primary: '#10a37f',      // Updated to match green theme
+    secondary: '#0e906f',    // Darker green for active states
+    background: '#343541',   // Updated background color
+    surface: '#40414f',      // Updated surface color
+    inputBg: '#40414f',      // Updated input background
+    border: '#565869',       // Updated border color
     text: {
-      primary: '#ececf1',    // Primary text
-      secondary: '#8e8ea0',  // Secondary text
+      primary: '#ffffff',    // White text
+      secondary: '#9ca3af',  // Gray text
     },
-    error: '#ef4444',        // Red for errors
+    error: '#ef4444',        // Error red
   },
 };
 
@@ -67,19 +74,30 @@ const OptionButton: React.FC<OptionButtonProps> = ({ label, isSelected, onPress 
   <TouchableOpacity
     onPress={onPress}
     activeOpacity={0.7}
-    className={`rounded-xl px-4 py-2.5 ${
-      isSelected 
-        ? 'bg-[#10a37f] active:bg-[#0e906f]' 
-        : 'border-2 border-gray-600 bg-transparent active:bg-gray-700/30'
-    }`}>
-    <Text className={`text-base ${
-      isSelected ? 'font-semibold text-white' : 'text-gray-300'
-    }`}>
+    style={{
+      minWidth: 80,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      borderRadius: 12,
+      backgroundColor: isSelected ? '#10a37f' : '#343541',
+      borderWidth: 1,
+      borderColor: isSelected ? '#10a37f' : '#565869',
+      justifyContent: 'center',
+      alignItems: 'center',
+    }}>
+    <Text 
+      style={{
+        color: isSelected ? '#ffffff' : '#9ca3af',
+        fontSize: 14,
+        fontWeight: '500',
+        textAlign: 'center',
+      }}>
       {label}
     </Text>
   </TouchableOpacity>
 );
 
+// Update the OptionSection component to show icons and emojis
 const OptionSection = ({
   title,
   options,
@@ -90,31 +108,120 @@ const OptionSection = ({
   options: string[];
   selectedValue: number;
   onSelect: (index: number) => void;
-}) => (
-  <View className="mb-4">
-    <Text className="mb-2 text-sm font-bold text-gray-300">{title}</Text>
-    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-      <View className="flex-row gap-2">
-        {options.map((option, index) => (
-          <OptionButton
-            key={option}
-            label={option}
-            isSelected={selectedValue === index}
-            onPress={() => onSelect(index)}
-          />
-        ))}
+}) => {
+  const key = title.toLowerCase() as keyof typeof optionIcons;
+  const icon = optionIcons[key];
+  const metadata = optionMetadata[key as keyof typeof optionMetadata];
+
+  return (
+    <View style={{ marginBottom: 20 }}>
+      <View className="flex-row items-center gap-2 mb-3">
+        <Text className="text-[#10a37f] text-lg">{icon?.emoji}</Text>
+        <Text className="text-[#9ca3af] text-base font-medium">
+          {title}
+        </Text>
       </View>
-    </ScrollView>
-  </View>
-);
+      <ScrollView 
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{
+          paddingHorizontal: 4,
+          gap: 8,
+        }}>
+        {options.map((option, index) => {
+          // Get the corresponding emoji for this option if available
+          const optionEmoji = metadata?.icons?.[index] || '';
+          
+          return (
+            <TouchableOpacity
+              key={option}
+              onPress={() => onSelect(index)}
+              activeOpacity={0.7}
+              className={`
+                min-w-[80px] px-4 py-3 rounded-xl
+                flex-row items-center justify-center gap-2
+                ${selectedValue === index ? 'bg-[#10a37f]' : 'bg-[#343541]'}
+                border ${selectedValue === index ? 'border-[#10a37f]' : 'border-[#565869]'}
+              `}>
+              {optionEmoji && (
+                <Text className="text-base">{optionEmoji}</Text>
+              )}
+              <Text 
+                className={`
+                  text-sm font-medium
+                  ${selectedValue === index ? 'text-white' : 'text-[#9ca3af]'}
+                `}>
+                {option}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+};
+
+// Special component for language selection
+const LanguageSection = ({
+  options,
+  selectedValue,
+  onSelect,
+}: {
+  options: Array<keyof typeof languageFlags>;
+  selectedValue: number;
+  onSelect: (index: number) => void;
+}) => {
+  return (
+    <View style={{ marginBottom: 20 }}>
+      <View className="flex-row items-center gap-2 mb-3">
+        <Text className="text-[#10a37f] text-lg">🌐</Text>
+        <Text className="text-[#9ca3af] text-base font-medium">
+          Language
+        </Text>
+      </View>
+      <ScrollView 
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{
+          paddingHorizontal: 4,
+          gap: 8,
+        }}>
+        {options.map((option, index) => {
+          const { flag } = languageFlags[option];
+          return (
+            <TouchableOpacity
+              key={option}
+              onPress={() => onSelect(index)}
+              activeOpacity={0.7}
+              className={`
+                min-w-[80px] px-4 py-3 rounded-xl
+                flex-row items-center justify-center gap-2
+                ${selectedValue === index ? 'bg-[#10a37f]' : 'bg-[#343541]'}
+                border ${selectedValue === index ? 'border-[#10a37f]' : 'border-[#565869]'}
+              `}>
+              <Text className="text-base">{flag}</Text>
+              <Text 
+                className={`
+                  text-sm font-medium
+                  ${selectedValue === index ? 'text-white' : 'text-[#9ca3af]'}
+                `}>
+                {option}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+};
 
 // Add new MarkdownContent component
 const MarkdownContent = ({ content }: { content: string }) => {
   return (
-    <View style={{ backgroundColor: CONFIG.COLORS.surface }}>
+    <View style={{ backgroundColor: 'transparent' }}>
       <Markdown
         style={{
-          body: { color: CONFIG.COLORS.text.primary, fontSize: 15, lineHeight: 22 },
+          body: { color: CONFIG.COLORS.text.primary, fontSize: 16, lineHeight: 24 },
           heading1: { 
             color: CONFIG.COLORS.text.primary, 
             fontSize: 22,
@@ -220,6 +327,217 @@ const MarkdownContent = ({ content }: { content: string }) => {
   );
 };
 
+// Update the ModalSettings component to use the new sections
+const ModalSettings = ({
+  visible,
+  scriptOptions,
+  updateScriptOption,
+  closeOptions
+}: {
+  visible: boolean;
+  scriptOptions: any;
+  updateScriptOption: (key: string, val: number) => void;
+  closeOptions: () => void;
+}) => (
+  <Modal
+    visible={visible}
+    animationType="slide"
+    transparent={true}
+    onRequestClose={closeOptions}>
+    <View className="flex-1 bg-black/50">
+      <View className="mt-auto h-[75%] bg-[#343541] rounded-t-3xl">
+        <View className="px-4 mb-4 flex-row items-center justify-between border-b border-[#565869]/30 py-4">
+          <Text className="text-xl font-bold text-white">Script Settings</Text>
+          <TouchableOpacity 
+            className="p-1 active:opacity-70"
+            onPress={closeOptions}>
+            <X size={26} color="#9ca3af" />
+          </TouchableOpacity>
+        </View>
+        
+        <ScrollView 
+          className="flex-1 px-4"
+          contentContainerStyle={{ paddingBottom: 100 }}>
+          <View>
+            {/* Special handling for language section */}
+            <LanguageSection
+              options={scriptOptions.language.options}
+              selectedValue={scriptOptions.language.value}
+              onSelect={(val) => updateScriptOption('language', val)}
+            />
+            
+            {/* Render other options */}
+            {Object.entries(scriptOptions).map(([key, option]) => {
+              if (key === 'language') return null; // Skip language as it's handled separately
+              return (
+                <OptionSection
+                  key={key}
+                  title={key.charAt(0).toUpperCase() + key.slice(1)} 
+                  options={(option as {options: any[]}).options}
+                  selectedValue={(option as {value: number}).value}
+                  onSelect={(val) => updateScriptOption(key, val)}
+                />
+              );
+            })}
+            
+            {/* Quick Tips Section */}
+            <View className="mt-6 bg-[#343541] rounded-2xl p-4 border border-[#565869]/30">
+              <View className="flex-row items-center gap-2 mb-4">
+                <Lightbulb size={20} color="#10a37f" />
+                <Text className="text-[#ececf1] text-lg font-semibold">Quick Tips</Text>
+              </View>
+              
+              {/* Tips Cards */}
+              <View className="space-y-3 gap-3">
+                {[
+                  {
+                    icon: <Youtube size={18} color="#10a37f" />,
+                    title: "Platform Optimization",
+                    description: "Match your script style to your platform for better engagement"
+                  },
+                  {
+                    icon: <Film size={18} color="#10a37f" />,
+                    title: "Duration Impact",
+                    description: "Shorter videos (2-5 mins) often have higher completion rates"
+                  },
+                  {
+                    icon: <Sparkles size={18} color="#10a37f" />,
+                    title: "Style Matters",
+                    description: "Educational content works best with a conversational tone"
+                  }
+                ].map((tip, index) => (
+                  <View 
+                    key={index}
+                    className="flex-row items-start gap-3 p-3 bg-[#40414f] rounded-xl border border-[#565869]/20">
+                    <View className="p-2 bg-[#10a37f]/10 rounded-lg">
+                      {tip.icon}
+                    </View>
+                    <View className="flex-1">
+                      <Text className="text-[#ececf1] font-medium mb-1">
+                        {tip.title}
+                      </Text>
+                      <Text className="text-[#8e8ea0] text-sm">
+                        {tip.description}
+                      </Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+              
+              {/* Pro Tip Box */}
+              <View className="mt-4 p-4 bg-[#10a37f]/10 rounded-xl border border-[#10a37f]/20">
+                <Text className="text-[#10a37f] font-semibold mb-2">Pro Tip 💡</Text>
+                <Text className="text-[#ececf1] text-sm leading-5">
+                  Combine different styles and experiment with various durations to find what works best for your audience. Track your analytics to optimize future scripts.
+                </Text>
+              </View>
+            </View>
+          </View>
+        </ScrollView>
+      </View>
+    </View>
+  </Modal>
+);
+
+// Update the GeneratingAnimation component to accept and use the stopGeneration prop
+const GeneratingAnimation = ({ onCancel }: { onCancel?: () => void }) => {
+  const [dots, setDots] = useState(0);
+  const icons = [
+    { icon: <Sparkles size={24} color="#10a37f" />, label: "Crafting ideas" },
+    { icon: <Globe size={24} color="#10a37f" />, label: "Researching" },
+    { icon: <Clock size={24} color="#10a37f" />, label: "Structuring" },
+    { icon: <Users size={24} color="#10a37f" />, label: "Personalizing" },
+    { icon: <Palette size={24} color="#10a37f" />, label: "Styling" },
+    { icon: <User size={24} color="#10a37f" />, label: "Reviewing" },
+    { icon: <Monitor size={24} color="#10a37f" />, label: "Optimizing" },
+    { icon: <Smile size={24} color="#10a37f" />, label: "Finalizing" },
+  ];
+
+  const [currentIconIndex, setCurrentIconIndex] = useState(0);
+
+  useEffect(() => {
+    const dotsInterval = setInterval(() => {
+      setDots((prev) => (prev + 1) % 4);
+    }, 500);
+
+    const iconInterval = setInterval(() => {
+      setCurrentIconIndex((prev) => (prev + 1) % icons.length);
+    }, 2000);
+
+    return () => {
+      clearInterval(dotsInterval);
+      clearInterval(iconInterval);
+    };
+  }, []);
+
+  return (
+    <View className="items-center p-6 rounded-2xl bg-[#444654] mx-4 border border-[#565869]/50">
+      {/* Animated Icon Container */}
+      <View className="w-16 h-16 mb-4 items-center justify-center bg-[#10a37f]/10 rounded-full">
+        <View className="animate-pulse">
+          {icons[currentIconIndex].icon}
+        </View>
+      </View>
+
+      {/* Progress Bar */}
+      <View className="w-48 h-1.5 bg-[#565869]/30 rounded-full mb-4 overflow-hidden">
+        <View 
+          className="h-full bg-[#10a37f] rounded-full"
+          style={{
+            width: `${((currentIconIndex + 1) / icons.length) * 100}%`,
+          }}
+        />
+      </View>
+
+      {/* Status Text */}
+      <View className="items-center">
+        <Text className="text-[#10a37f] text-lg font-semibold mb-1">
+          {icons[currentIconIndex].label}
+        </Text>
+        <Text className="text-[#9ca3af] text-base">
+          {`Please wait${'.'.repeat(dots)}`}
+        </Text>
+      </View>
+
+      {/* Tips Carousel */}
+      <View className="mt-6 p-4 bg-[#343541] rounded-xl border border-[#565869]/20">
+        <Text className="text-[#ececf1] text-sm text-center italic">
+          💡 Tip: {[
+            "Scripts are optimized for maximum engagement",
+            "Each section is carefully structured for flow",
+            "Adding visual cues for better retention",
+            "Incorporating proven storytelling techniques",
+          ][currentIconIndex % 4]}
+        </Text>
+      </View>
+
+      {/* Update Cancel Button */}
+      {onCancel && (
+        <TouchableOpacity
+          className="mt-4 px-6 py-2.5 rounded-full border border-[#10a37f]/30 bg-[#10a37f]/10 active:bg-[#10a37f]/20"
+          onPress={onCancel}>
+          <Text className="text-[#10a37f] font-medium">
+            Cancel Generation
+          </Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+};
+
+// Add new empty state component
+const EmptyState = () => (
+  <View className="items-center justify-center py-8">
+    <View className="bg-[#40414f] p-6 rounded-full mb-4">
+      <Sparkles size={32} color="#10a37f" />
+    </View>
+    <Text className="text-[#ececf1] text-xl font-bold mb-2">Ready to Create</Text>
+    <Text className="text-[#9ca3af] text-center px-6">
+      Enter your topic above and let AI craft your perfect script
+    </Text>
+  </View>
+);
+
 const MainPage = () => {
   const { info, success, warning, error: showError } = useToast();
   
@@ -254,7 +572,7 @@ const MainPage = () => {
     { text: 'Structuring your content... 📊', color: '#10a37f' },
     { text: 'Adding engaging hooks... ✨', color: '#8e8ea0' },
     { text: 'Polishing to perfection... ⭐', color: '#10a37f' },
-    { text: 'Finalizing your script... 🎬', color: '#8e8ea0' },
+    { text: 'Finalizing your script... ��', color: '#8e8ea0' },
   ];
 
   // Add effect to rotate messages during loading
@@ -276,24 +594,36 @@ const MainPage = () => {
     setRotation(showOptions ? 180 : 0);
   }, [showOptions]);
 
-  // Add function to stop generation
-  const stopGeneration = () => {
+  // Update the stopGeneration function
+  const stopGeneration = React.useCallback(async () => {
     if (controller) {
       controller.abort();
       setController(null);
       setLoading(false);
-      setError('Generation stopped');
-      info('Generation stopped by user');
+      setError('');
+      info('Generation stopped');
+      await triggerHaptic();
+    }
+  }, [controller, info]);
+
+  // Add haptic feedback
+  const triggerHaptic = async () => {
+    try {
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    } catch (error) {
+      console.log('Haptics not supported');
     }
   };
 
+  // Enhance generate script with haptics and animations
   const generateScript = async (isRegenerate: boolean = false) => {
     if (!topic.trim()) {
+      triggerHaptic();
       showError('Please enter a topic before generating');
       return;
     }
 
-    // If regenerating, clear previous script
+    triggerHaptic();
     if (isRegenerate) {
       setScript('');
     }
@@ -364,23 +694,29 @@ const MainPage = () => {
 
       const result = await model.generateContent(prompt);
       const generatedText = await result.response.text();
-      setScript(generatedText);
-      success('Script generated successfully!');
-    } catch (error: any) {
-      if (error.name === 'AbortError') {
-        // Add proper cleanup
-        setScript('Generation stopped by user');
-        setError('Generation stopped');
-      } else {
-        console.error('Generation error:', error);
-        const errorMessage =
-          error.message || 'Failed to generate script. Please check your connection and try again.';
-        setError(errorMessage);
-        showError(errorMessage);
+      
+      // Check if aborted before updating state
+      if (!newController.signal.aborted) {
+        setScript(generatedText);
+        success('Script generated successfully!');
       }
+    } catch (error: any) {
+      // Handle abort case first
+      if (error.name === 'AbortError' || error.message?.includes('Aborted')) {
+        return; // Exit early without showing error
+      }
+      
+      // Handle other errors
+      console.error('Generation error:', error);
+      const errorMessage = error.message || 'Failed to generate script. Please check your connection and try again.';
+      setError(errorMessage);
+      showError(errorMessage);
     } finally {
-      setLoading(false);
-      setController(null);
+      // Only update states if not aborted
+      if (!newController.signal.aborted) {
+        setLoading(false);
+        setController(null);
+      }
     }
   };
 
@@ -420,28 +756,29 @@ const MainPage = () => {
   // Add refresh state
   const [isRefreshing, setIsRefreshing] = useState(false);
   
-  // Reset refresh state without any generation
+  // Add pull-to-refresh feedback
   const onRefresh = React.useCallback(() => {
     setIsRefreshing(true);
-    // Clear any existing errors
+    triggerHaptic();
     setError('');
-    // Just show refresh animation without data changes
     setTimeout(() => setIsRefreshing(false), 1000);
   }, []);
 
   // Update topic suggestions UI
   const topicSuggestions = [
     { 
-      icon: <Youtube size={20} color="#10a37f" />, 
-      text: 'Tech review video',
-      bg: 'bg-[#10a37f10]',
-      border: 'border-[#10a37f]'
+      icon: <Youtube size={24} color="#10a37f" />, 
+      text: 'Tech Review',
+      description: 'Create engaging product reviews',
+      bg: 'bg-[#10a37f15]',
+      border: 'border-[#10a37f40]'
     },
     { 
-      icon: <Film size={20} color="#10a37f" />, 
-      text: 'Short film analysis',
-      bg: 'bg-[#10a37f10]',
-      border: 'border-[#10a37f]'
+      icon: <Film size={24} color="#10a37f" />, 
+      text: 'Film Analysis',
+      description: 'Break down movies and shows',
+      bg: 'bg-[#10a37f15]',
+      border: 'border-[#10a37f40]'
     },
     { 
       icon: <Camera size={20} color="#10a37f" />, 
@@ -463,6 +800,20 @@ const MainPage = () => {
     }
   ];
 
+  // Remove bottomSheet ref and snapPoints
+  // Add modal visibility state
+  const [modalVisible, setModalVisible] = useState(false);
+
+  // Update open/close handlers
+  const openOptions = () => setModalVisible(true);
+  const closeOptions = () => setModalVisible(false);
+
+  // Enhance topic suggestions with haptics
+  const handleTopicSelect = (topic: string) => {
+    triggerHaptic();
+    setTopic(topic);
+  };
+
   // Remove the router.replace call and modify the auth check
   if (!isLoaded) {
     return (
@@ -477,17 +828,56 @@ const MainPage = () => {
     return null;
   }
 
+  const renderInput = () => (
+    <TextInput
+      placeholder="What's your video about?"
+      placeholderTextColor="#9ca3af"
+      value={topic}
+      onChangeText={setTopic}
+      className="flex-1 rounded-xl bg-[#40414f] px-4 py-4 text-white text-base border-2 border-[#565869] focus:border-[#10a37f]"
+      onFocus={triggerHaptic}
+    />
+  );
+
+  const renderGenerateButton = () => (
+    <TouchableOpacity
+      className={`rounded-xl p-4 ${
+        loading ? 'bg-[#10a37f]/80' : 'bg-[#10a37f] active:bg-[#0e906f]'
+      }`}
+      onPress={() => generateScript(false)}
+      disabled={loading}>
+      {loading ? (
+        <GeneratingAnimation onCancel={stopGeneration} />
+      ) : (
+        <Sparkles color="white" size={24} />
+      )}
+    </TouchableOpacity>
+  );
+
   return (
     <SafeAreaView className="flex-1 bg-[#343541]">
+      {/* Modern Header
+      <View className="px-4 py-4 border-b border-[#565869]/30 flex-row items-center justify-between">
+        <View className="flex-row items-center gap-2">
+          <Sparkles size={24} color="#10a37f" />
+          <Text className="text-white text-xl font-bold">Script AI</Text>
+        </View>
+        <TouchableOpacity 
+          className="p-2.5 rounded-full bg-[#40414f] active:bg-[#565869]"
+          onPress={openOptions}>
+          <Settings size={22} color="#10a37f" />
+        </TouchableOpacity>
+      </View> */}
+
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        className="flex-1"
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 20 : 0}>
+        className="flex-1">
         
         <ScrollView
-          className="flex-1 px-4 pt-4"
+          className="flex-1"
           contentContainerStyle={{ 
-            paddingBottom: Platform.select({ ios: 100, android: 120 }) 
+            padding: 16,
+            paddingBottom: Platform.select({ ios: 120, android: 140 }) 
           }}
           refreshControl={
             <RefreshControl
@@ -495,148 +885,122 @@ const MainPage = () => {
               onRefresh={onRefresh}
               tintColor="#10a37f"
               colors={['#10a37f']}
+              progressBackgroundColor="#343541"
             />
           }>
 
-          {/* Enhanced Topic Suggestions */}
+          {/* Show empty state when no script and not loading */}
+          {!script && !loading && <EmptyState />}
+
+          {/* Enhanced topic suggestions with better feedback */}
           {!script && !loading && (
-            <View className="mt-2 mb-6">
-              <View className="flex-row items-center gap-2 mb-4 px-1">
-                <Lightbulb size={22} color="#8e8ea0" />
-                <Text className="text-[#8e8ea0] text-base font-medium">Suggested Topics</Text>
+            <View className="mb-6">
+              <View className="flex-row items-center gap-2 mb-4">
+                <Lightbulb size={22} color="#10a37f" />
+                <Text className="text-[#F8FAFC] text-lg font-semibold">Quick Templates</Text>
               </View>
               <View className="gap-3">
                 {topicSuggestions.map((suggestion, index) => (
                   <TouchableOpacity
                     key={index}
-                    className={`flex-row items-center gap-3 rounded-xl p-3.5 border-2 ${suggestion.bg} ${suggestion.border} active:opacity-80`}
-                    onPress={() => setTopic(suggestion.text)}>
-                    <View className="p-1.5 bg-[#343541]/20 rounded-lg">
-                      {suggestion.icon}
+                    className="flex-row items-center gap-4 rounded-2xl p-4 bg-[#282A36] border border-[#383A59] active:bg-[#2D2D3D]"
+                    onPress={() => handleTopicSelect(suggestion.text)}>
+                    <View className="p-2.5 bg-[#10a37f]/10 rounded-xl">
+                      {React.cloneElement(suggestion.icon, { color: '#10a37f' })}
                     </View>
-                    <Text className="text-[#ececf1] text-base font-medium flex-1">
-                      {suggestion.text}
-                    </Text>
-                    <ChevronRight size={20} color="#8e8ea0" />
+                    <View className="flex-1">
+                      <Text className="text-[#F8FAFC] text-base font-semibold">
+                        {suggestion.text}
+                      </Text>
+                      {suggestion.description && (
+                        <Text className="text-[#94A3B8] text-sm mt-0.5">
+                          {suggestion.description}
+                        </Text>
+                      )}
+                    </View>
+                    <ChevronRight size={20} color="#10a37f" />
                   </TouchableOpacity>
                 ))}
               </View>
             </View>
           )}
 
-          {/* Improved Script Container */}
+          {/* Enhanced script display with animations */}
           {script && (
-            <View className="mb-4 rounded-2xl bg-[#444654] p-4 border border-[#565869]/50">
-              <View className="flex-row items-center justify-between pb-3 mb-2 border-b border-[#565869]/30">
-                <Text className="text-[#ececf1] text-lg font-bold">Generated Script</Text>
-                <View className="flex-row gap-3">
+            <View className="rounded-3xl bg-[#282A36] overflow-hidden border border-[#383A59] animate-fadeIn">
+              <View className="flex-row items-center justify-between p-4 bg-[#40414f]">
+                <Text className="text-[#ececf1] text-lg font-bold">Your Script</Text>
+                <View className="flex-row gap-4">
                   <TouchableOpacity 
-                    className="p-1.5 active:opacity-70"
-                    onPress={handleCopyToClipboard}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                    <Copy size={22} color="#8e8ea0" />
+                    className="p-2 rounded-lg bg-[#343541] active:opacity-80"
+                    onPress={handleCopyToClipboard}>
+                    <Copy size={20} color="#10a37f" />
                   </TouchableOpacity>
                   <TouchableOpacity 
-                    className="p-1.5 active:opacity-70"
-                    onPress={handleFileShare}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                    <Share2 size={22} color="#8e8ea0" />
+                    className="p-2 rounded-lg bg-[#343541] active:opacity-80"
+                    onPress={handleFileShare}>
+                    <Share2 size={20} color="#10a37f" />
                   </TouchableOpacity>
                 </View>
               </View>
-              <MarkdownContent content={script} />
+              <View className="p-4">
+                <MarkdownContent content={script} />
+              </View>
             </View>
           )}
-
         </ScrollView>
 
-        {/* Enhanced Input Bottom Bar */}
-        <View className="w-full border-t border-[#565869]/50 bg-[#343541] px-4 py-2.5">
+        {/* Enhanced input bar with visual feedback */}
+        <View className="w-full border-t border-[#565869]/30 bg-[#343541] px-4 py-4">
           <View className="flex-row items-center gap-3">
-            <TouchableOpacity 
-              className="p-2 active:opacity-70"
-              onPress={() => setShowOptions(!showOptions)}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <SlidersHorizontal size={24} color="#8e8ea0" />
-            </TouchableOpacity>
-            
             <TextInput
-              placeholder="Enter your video topic..."
+              placeholder="What's your video about?"
               placeholderTextColor="#9ca3af"
               value={topic}
               onChangeText={setTopic}
-              className="flex-1 rounded-xl bg-[#40414f] px-4 py-3.5 text-[#ececf1] text-base border-2 border-gray-600"
-              style={{ includeFontPadding: false }}
+              className="flex-1 rounded-xl bg-[#40414f] px-4 py-4 text-white text-base border-2 border-[#565869] focus:border-[#10a37f]"
+              onFocus={triggerHaptic}
             />
-            
             <TouchableOpacity
-              className={`rounded-xl p-3.5 ${loading ? 'bg-[#10a37f]/80' : 'bg-[#10a37f] active:bg-[#0e906f]'}`}
+              className={`rounded-xl p-4 ${
+                loading ? 'bg-[#10a37f]/80' : 'bg-[#10a37f] active:bg-[#0e906f]'
+              }`}
               onPress={() => generateScript(false)}
               disabled={loading}>
               {loading ? (
-                <ActivityIndicator color="white" size="small" />
+                <GeneratingAnimation onCancel={stopGeneration} />
               ) : (
-                <Sparkles color="white" size={22} />
+                <Sparkles color="white" size={24} />
               )}
             </TouchableOpacity>
           </View>
+          
+          {/* Enhanced settings button */}
+          <TouchableOpacity 
+            onPress={() => {
+              triggerHaptic();
+              openOptions();
+            }}
+            className="mt-3 flex-row items-center justify-center py-3 px-4 rounded-xl bg-[#40414f] active:bg-[#565869]">
+            <SlidersHorizontal size={16} color="#10a37f" />
+            <Text className="ml-2 text-[#94A3B8] text-sm font-medium">
+              Customize Script Settings
+            </Text>
+          </TouchableOpacity>
         </View>
 
-        {/* Improved Options Modal */}
-        <Modal
-          visible={showOptions}
-          animationType="slide"
-          transparent={true}
-          onRequestClose={() => setShowOptions(false)}>
-          <View className="flex-1 justify-end bg-black/50">
-            <View className="max-h-[75%] rounded-t-2xl bg-[#40414f] p-5 pt-4 border-t-4 border-[#10a37f]/20">
-              <View className="mb-4 flex-row items-center justify-between border-b border-[#565869]/30 pb-3">
-                <Text className="text-xl font-bold text-[#ececf1]">Script Settings</Text>
-                <TouchableOpacity 
-                  className="p-1 active:opacity-70"
-                  onPress={() => setShowOptions(false)}>
-                  <X size={26} color="#8e8ea0" />
-                </TouchableOpacity>
-              </View>
-              <ScrollView 
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={{ paddingBottom: 20 }}>
-                {Object.entries(scriptOptions).map(([key, option]) => (
-                  <OptionSection
-                    key={key}
-                    title={key.charAt(0).toUpperCase() + key.slice(1)}
-                    options={option.options}
-                    selectedValue={option.value}
-                    onSelect={(val) => updateScriptOption(key, val)}
-                  />
-                ))}
-              </ScrollView>
-            </View>
-          </View>
-        </Modal>
+        {/* Replace BottomSheet with ModalSettings */}
+        <ModalSettings
+          visible={modalVisible}
+          scriptOptions={scriptOptions}
+          updateScriptOption={updateScriptOption}
+          closeOptions={closeOptions}
+        />
 
-        {/* Enhanced Loading Overlay */}
+        {/* Update Loading Overlay */}
         {loading && (
           <View className="absolute top-0 left-0 right-0 bottom-0 justify-center items-center bg-[#343541]/95">
-            <View className="items-center p-6 rounded-2xl bg-[#444654] mx-4 border border-[#565869]/50">
-              <ActivityIndicator 
-                size="large" 
-                color={CONFIG.COLORS.primary} 
-                style={{ transform: [{ scale: 1.2 }] }}
-              />
-              <Text 
-                className="mt-4 text-center text-lg font-medium px-4 max-w-[80%]"
-                style={{ color: loadingMessages[loadingMessageIndex].color }}>
-                {loadingMessages[loadingMessageIndex].text}
-              </Text>
-              <TouchableOpacity
-                className="mt-4 px-6 py-2 rounded-full bg-[#10a37f]/20 active:bg-[#10a37f]/30"
-                onPress={stopGeneration}>
-                <Text className="text-[#10a37f] text-sm font-medium">
-                  Cancel Generation
-                </Text>
-              </TouchableOpacity>
-            </View>
+            <GeneratingAnimation onCancel={stopGeneration} />
           </View>
         )}
 

@@ -20,7 +20,7 @@ const Sidebar = ({ slideAnim, toggleSidebar, onSignOutPress }: SidebarProps) => 
 
   const handleNavigation = useCallback(
     (route: string) => {
-      router.push(route);
+      router.push(route as any);
       toggleSidebar();
     },
     [router, toggleSidebar]
