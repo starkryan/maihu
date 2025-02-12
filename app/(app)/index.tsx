@@ -14,7 +14,8 @@ import {
   Film,
   Camera,
   Mic,
-  ChevronRight
+  ChevronRight,
+  SlidersHorizontal
 } from 'lucide-react-native';
 import React, { useState } from 'react';
 import {
@@ -32,10 +33,11 @@ import {
   Modal
 } from 'react-native';
 import Markdown from 'react-native-markdown-display';
-import { Toast } from '../Toast';
+import { useToast } from '../Toast/components/ToastManager';
 import * as MediaLibrary from 'expo-media-library';
 
 import { useScriptStore } from '@/store/scriptStore';
+
 
 // Environment configuration (should use actual environment variables in production)
 const CONFIG = {
@@ -65,8 +67,14 @@ const OptionButton: React.FC<OptionButtonProps> = ({ label, isSelected, onPress 
   <TouchableOpacity
     onPress={onPress}
     activeOpacity={0.7}
-    className={`rounded-xl px-4 py-2.5 ${isSelected ? 'bg-[#10a37f]' : 'border-2 border-gray-600 bg-transparent'}`}>
-    <Text className={`text-base ${isSelected ? 'font-bold text-white' : 'text-gray-300'}`}>
+    className={`rounded-xl px-4 py-2.5 ${
+      isSelected 
+        ? 'bg-[#10a37f] active:bg-[#0e906f]' 
+        : 'border-2 border-gray-600 bg-transparent active:bg-gray-700/30'
+    }`}>
+    <Text className={`text-base ${
+      isSelected ? 'font-semibold text-white' : 'text-gray-300'
+    }`}>
       {label}
     </Text>
   </TouchableOpacity>
@@ -213,11 +221,13 @@ const MarkdownContent = ({ content }: { content: string }) => {
 };
 
 const MainPage = () => {
+  const { info, success, warning, error: showError } = useToast();
+  
   const {
     topic,
     script,
     loading,
-    error,
+    error: scriptError,
     showOptions,
     scriptOptions,
     setTopic,
@@ -273,13 +283,13 @@ const MainPage = () => {
       setController(null);
       setLoading(false);
       setError('Generation stopped');
-      Toast.info('Generation stopped by user');
+      info('Generation stopped by user');
     }
   };
 
   const generateScript = async (isRegenerate: boolean = false) => {
     if (!topic.trim()) {
-      Toast.error('Please enter a topic before generating');
+      showError('Please enter a topic before generating');
       return;
     }
 
@@ -355,7 +365,7 @@ const MainPage = () => {
       const result = await model.generateContent(prompt);
       const generatedText = await result.response.text();
       setScript(generatedText);
-      Toast.success('Script generated successfully!');
+      success('Script generated successfully!');
     } catch (error: any) {
       if (error.name === 'AbortError') {
         // Add proper cleanup
@@ -366,7 +376,7 @@ const MainPage = () => {
         const errorMessage =
           error.message || 'Failed to generate script. Please check your connection and try again.';
         setError(errorMessage);
-        Toast.error(errorMessage);
+        showError(errorMessage);
       }
     } finally {
       setLoading(false);
@@ -378,7 +388,7 @@ const MainPage = () => {
     try {
       const { status } = await MediaLibrary.requestPermissionsAsync();
       if (status !== 'granted') {
-        Toast.error('Storage permission required to share files');
+        showError('Storage permission required to share files');
         return;
       }
 
@@ -391,18 +401,18 @@ const MainPage = () => {
         url: fileUri,
         message: script,
       });
-    } catch (error) {
-      console.error('Share error:', error);
-      Toast.error('Failed to save or share the script');
+    } catch (err) {
+      console.error('Share error:', err);
+      showError('Failed to save or share the script');
     }
   };
 
   const handleCopyToClipboard = async () => {
     try {
       await Clipboard.setStringAsync(script);
-      Toast.success('Script copied to clipboard');
+      success('Script copied to clipboard');
     } catch (error) {
-      Toast.error('Failed to copy script');
+      showError('Failed to copy script');
     }
 
   };
@@ -499,10 +509,8 @@ const MainPage = () => {
                 {topicSuggestions.map((suggestion, index) => (
                   <TouchableOpacity
                     key={index}
-                    className={`flex-row items-center gap-3 rounded-xl p-3.5 border-2 ${suggestion.bg} ${suggestion.border}`}
-                    onPress={() => setTopic(suggestion.text)}
-                    activeOpacity={0.8}
-                  >
+                    className={`flex-row items-center gap-3 rounded-xl p-3.5 border-2 ${suggestion.bg} ${suggestion.border} active:opacity-80`}
+                    onPress={() => setTopic(suggestion.text)}>
                     <View className="p-1.5 bg-[#343541]/20 rounded-lg">
                       {suggestion.icon}
                     </View>
@@ -549,31 +557,26 @@ const MainPage = () => {
               className="p-2 active:opacity-70"
               onPress={() => setShowOptions(!showOptions)}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <Settings size={24} color="#8e8ea0" />
+              <SlidersHorizontal size={24} color="#8e8ea0" />
             </TouchableOpacity>
             
             <TextInput
               placeholder="Enter your video topic..."
-              placeholderTextColor="#8e8ea0"
+              placeholderTextColor="#9ca3af"
               value={topic}
               onChangeText={setTopic}
-              className="flex-1 rounded-xl bg-[#40414f] px-4 py-3 text-[#ececf1] text-base"
-              style={{ 
-                borderWidth: 1,
-                borderColor: topic ? '#10a37f/30' : '#565869/30',
-                includeFontPadding: false
-              }}
+              className="flex-1 rounded-xl bg-[#40414f] px-4 py-3.5 text-[#ececf1] text-base border-2 border-gray-600"
+              style={{ includeFontPadding: false }}
             />
             
             <TouchableOpacity
-              className={`rounded-xl p-3 ${loading ? 'bg-[#10a37f]/80' : 'bg-[#10a37f]'}`}
+              className={`rounded-xl p-3.5 ${loading ? 'bg-[#10a37f]/80' : 'bg-[#10a37f] active:bg-[#0e906f]'}`}
               onPress={() => generateScript(false)}
-              disabled={loading}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              disabled={loading}>
               {loading ? (
                 <ActivityIndicator color="white" size="small" />
               ) : (
-                <Sparkles color="white" size={24} />
+                <Sparkles color="white" size={22} />
               )}
             </TouchableOpacity>
           </View>
@@ -627,9 +630,11 @@ const MainPage = () => {
                 {loadingMessages[loadingMessageIndex].text}
               </Text>
               <TouchableOpacity
-                className="mt-4 px-6 py-2 rounded-full bg-[#10a37f]/20"
+                className="mt-4 px-6 py-2 rounded-full bg-[#10a37f]/20 active:bg-[#10a37f]/30"
                 onPress={stopGeneration}>
-                <Text className="text-[#10a37f] text-sm font-medium">Cancel Generation</Text>
+                <Text className="text-[#10a37f] text-sm font-medium">
+                  Cancel Generation
+                </Text>
               </TouchableOpacity>
             </View>
           </View>

@@ -2,7 +2,7 @@ import { useOAuth } from "@clerk/clerk-expo";
 import { useCallback, useRef } from "react";
 import { useWarmUpBrowser } from "@/utils/warmUpBrowser";
 import * as WebBrowser from "expo-web-browser";
-import { Toast } from "@/app/Toast";
+import { useToast } from "@/app/Toast/components/ToastManager";
 import { useRouter } from "expo-router";
 import { Platform } from "react-native";
 
@@ -13,6 +13,7 @@ export const useOAuthFlow = () => {
   const browserInstance = useRef<WebBrowser.WebBrowserResult | null>(null);
   const navigationAttempts = useRef(0);
   const maxAttempts = 3;
+  const { error: toastError, success } = useToast();
 
   const cleanupBrowser = useCallback(async () => {
     try {
@@ -27,7 +28,7 @@ export const useOAuthFlow = () => {
 
   const navigateToApp = useCallback(async () => {
     if (navigationAttempts.current >= maxAttempts) {
-      Toast.error('Navigation failed. Please try again.');
+      toastError('Navigation failed. Please try again.');
       return;
     }
 
@@ -52,14 +53,14 @@ export const useOAuthFlow = () => {
       const { createdSessionId, setActive } = await startOAuthFlow();
       
       if (!createdSessionId) {
-        Toast.error('Authentication failed. Please try again.');
+        toastError('Authentication failed. Please try again.');
         return null;
       }
 
       if (setActive) {
         try {
           await setActive({ session: createdSessionId });
-          Toast.success('Successfully signed in!');
+          success('Successfully signed in!');
           
           if (Platform.OS === 'web') {
             window.location.href = '/(app)';
@@ -69,14 +70,14 @@ export const useOAuthFlow = () => {
           await navigateToApp();
         } catch (error) {
           console.error('Session activation error:', error);
-          Toast.error('Failed to complete sign in. Please try again.');
+          toastError('Failed to complete sign in. Please try again.');
         }
       }
 
       return { createdSessionId, setActive };
     } catch (err) {
       console.error("OAuth error:", err);
-      Toast.error('Sign in failed. Please check your connection and try again.');
+      toastError('Sign in failed. Please check your connection and try again.');
       return null;
     } finally {
       await cleanupBrowser();

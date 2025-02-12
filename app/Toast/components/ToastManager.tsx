@@ -4,6 +4,7 @@ import Modal from "react-native-modal";
 import React, { useEffect, useRef, useCallback } from "react";
 import { RFPercentage } from "react-native-responsive-fontsize";
 import { View, Text, Animated, Dimensions, TouchableOpacity } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 // Type definitions
 type ToastPosition = 'top' | 'bottom' | 'center';
@@ -102,6 +103,7 @@ const ToastManager: React.FC<ToastManagerProps> = ({
   duration = 3000,
   ...props 
 }) => {
+  const insets = useSafeAreaInsets();
   const { isVisible, message, type, position: storePosition, duration: toastDuration, hide, config } = useToastStore();
   const progressAnim = useRef(new Animated.Value(0)).current;
   const timeoutRef = useRef<NodeJS.Timeout>();
@@ -112,6 +114,18 @@ const ToastManager: React.FC<ToastManagerProps> = ({
   const finalWidth = width ?? config.width ?? 320;
   const finalAnimationIn = animationIn ?? config.animationIn ?? 'slideInDown';
   const finalAnimationOut = animationOut ?? config.animationOut ?? 'slideOutUp';
+  const finalShowCloseIcon = showCloseIcon ?? config.showCloseIcon ?? true;
+  const finalShowProgressBar = showProgressBar ?? config.showProgressBar ?? true;
+
+  const startProgressAnimation = () => {
+    // Reset animation value before starting
+    progressAnim.setValue(0);
+    Animated.timing(progressAnim, {
+      toValue: 1,
+      duration: toastDuration,
+      useNativeDriver: true
+    }).start();
+  };
 
   useEffect(() => {
     if (isVisible) {
@@ -126,14 +140,15 @@ const ToastManager: React.FC<ToastManagerProps> = ({
     };
   }, [isVisible, toastDuration]);
 
-  const startProgressAnimation = () => {
-    progressAnim.setValue(0);
-    Animated.timing(progressAnim, {
-      toValue: 1,
-      duration: toastDuration,
-      useNativeDriver: true,
-    }).start();
-  };
+  const calculatePosition = useCallback((position: ToastPosition, screenHeight: number): number => {
+    const toastHeight = RFPercentage(9);
+    const positions = {
+      top: insets.top + toastHeight / 2,
+      center: (screenHeight - toastHeight) / 2,
+      bottom: screenHeight - toastHeight * 1.5 - insets.bottom,
+    };
+    return positions[position];
+  }, [insets.top, insets.bottom]);
 
   const getToastColor = () => {
     const colors = {
@@ -172,37 +187,28 @@ const ToastManager: React.FC<ToastManagerProps> = ({
 
   const hideToast = useCallback(() => {
     hide();
-  }, [hide]);
+    // Reset animation value when hiding
+    progressAnim.setValue(0);
+  }, [hide, progressAnim]);
 
   const pause = useCallback(() => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    progressAnim?.stopAnimation();
+    progressAnim.stopAnimation();
   }, [progressAnim]);
 
   const resume = useCallback(() => {
     if (!isVisible) return;
-    const currentProgress = progressAnim._value;
-    const remainingDuration = toastDuration * (1 - currentProgress);
+    const currentValue = progressAnim.__getValue();
+    const remaining = toastDuration * (1 - currentValue);
     
     Animated.timing(progressAnim, {
       toValue: 1,
-      duration: remainingDuration,
+      duration: remaining,
       useNativeDriver: true,
     }).start();
     
-    timeoutRef.current = setTimeout(hide, remainingDuration);
-  }, [toastDuration, progressAnim, hide, isVisible]);
-
-  // Replace existing position calculation with more precise version
-  const calculatePosition = (position: ToastPosition, screenHeight: number): number => {
-    const toastHeight = RFPercentage(9); // Match your actual toast height
-    const positions = {
-      top: toastHeight / 2,
-      center: (screenHeight - toastHeight) / 2,
-      bottom: screenHeight - toastHeight * 1.5,
-    };
-    return positions[position];
-  };
+    timeoutRef.current = setTimeout(hideToast, remaining);
+  }, [isVisible, toastDuration, progressAnim, hideToast]);
 
   // Update progress bar interpolation to use transform
   const progressInterpolation = progressAnim.interpolate({
@@ -245,7 +251,7 @@ const ToastManager: React.FC<ToastManagerProps> = ({
           ...style,
         }}
       >
-        <View className={`flex-row items-center p-3 gap-2 ${showCloseIcon ? 'pr-9' : 'pr-3'}`}>
+        <View className={`flex-row items-center p-3 gap-2 ${finalShowCloseIcon ? 'pr-9' : 'pr-3'}`}>
           <View
             className={`rounded-xl p-1.5 border ${
               type === 'info' ? 'bg-[#10a37f]/10 border-[#10a37f]/30' :
@@ -266,7 +272,7 @@ const ToastManager: React.FC<ToastManagerProps> = ({
           </Text>
         </View>
 
-        {showCloseIcon && (
+        {finalShowCloseIcon && (
           <TouchableOpacity 
             onPress={hideToast} 
             activeOpacity={0.7} 
@@ -281,7 +287,7 @@ const ToastManager: React.FC<ToastManagerProps> = ({
           </TouchableOpacity>
         )}
 
-        {showProgressBar && (
+        {finalShowProgressBar && (
           <View className="mx-4 mb-3">
             <View 
               className={`h-1 rounded-full overflow-hidden border ${
@@ -317,18 +323,35 @@ const ToastManager: React.FC<ToastManagerProps> = ({
   );
 };
 
-// Update helper functions
+// Create a custom hook for toast actions
+export const useToast = () => {
+  const show = useToastStore(state => state.show);
+  const hide = useToastStore(state => state.hide);
+  const setConfig = useToastStore(state => state.setConfig);
+
+  // Add proper type for options
+  type ShowToastOptions = {
+    position?: ToastPosition;
+    duration?: number;
+  };
+
+  return {
+    info: (message: string, options?: ShowToastOptions) => 
+      show({ message, type: 'info', ...options }),
+    success: (message: string, options?: ShowToastOptions) => 
+      show({ message, type: 'success', ...options }),
+    warning: (message: string, options?: ShowToastOptions) => 
+      show({ message, type: 'warning', ...options }),
+    error: (message: string, options?: ShowToastOptions) => 
+      show({ message, type: 'error', ...options }),
+    hide,
+    configure: setConfig
+  };
+};
+
+// Deprecate the old Toast object in favor of the hook
 export const Toast = {
-  info: (message: string, options?: Pick<ToastState, 'position' | 'duration'>) => 
-    useToastStore.getState().show({ message, type: 'info', ...options }),
-  success: (message: string, options?: Pick<ToastState, 'position' | 'duration'>) => 
-    useToastStore.getState().show({ message, type: 'success', ...options }),
-  warning: (message: string, options?: Pick<ToastState, 'position' | 'duration'>) => 
-    useToastStore.getState().show({ message, type: 'warning', ...options }),
-  error: (message: string, options?: Pick<ToastState, 'position' | 'duration'>) => 
-    useToastStore.getState().show({ message, type: 'error', ...options }),
-  configure: (config: Partial<ToastConfig>) => 
-    useToastStore.getState().setConfig(config),
+  // ... existing Toast methods with deprecation warning ...
 };
 
 export default ToastManager;

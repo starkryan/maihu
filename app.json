@@ -39,6 +39,15 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "ceededa0-cd35-4437-ae61-61c6823a24dc"
+      }
+    },
+    "owner": "siitpatna"
   }
 }

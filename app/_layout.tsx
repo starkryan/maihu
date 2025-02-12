@@ -63,20 +63,25 @@ function RootLayoutNav() {
   }
 
   return (
-    <SafeAreaProvider>
-      <StatusBar style="light" />
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: "#343541" },
-        }}
+    <View className="flex-1 bg-[#343541]">
+      <SafeAreaProvider
+        style={{ backgroundColor: '#343541' }}
       >
-        <Stack.Screen name="index" />         
-        <Stack.Screen name="get-started" />   
-        <Stack.Screen name="(auth)" />       
-        <Stack.Screen name="(app)" />        
-      </Stack>
-      <ToastManager />
-    </SafeAreaProvider>
+        <StatusBar style="light" backgroundColor="#343541" />
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: "#343541" },
+            animation: 'fade',
+          }}
+        >
+          <Stack.Screen name="index" />         
+          <Stack.Screen name="get-started" />   
+          <Stack.Screen name="(auth)" />       
+          <Stack.Screen name="(app)" />        
+        </Stack>
+        <ToastManager />
+      </SafeAreaProvider>
+    </View>
   );
 }

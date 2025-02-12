@@ -1,17 +1,32 @@
 import { useAuth } from '@clerk/clerk-expo';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useRouter, usePathname } from 'expo-router';
 import React from 'react';
-import { View, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator, BackHandler } from 'react-native';
 
 export default function AuthLayout() {
   const { isLoaded, isSignedIn } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
 
   React.useEffect(() => {
     if (isLoaded && isSignedIn) {
       router.replace('/(app)');
     }
   }, [isLoaded, isSignedIn]);
+
+  // Handle back button press
+  React.useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      // If we're on sign-in or sign-up, exit the app instead of going back
+      if (pathname === '/(auth)/sign-in' || pathname === '/(auth)/sign-up') {
+        BackHandler.exitApp();
+        return true;
+      }
+      return false;
+    });
+
+    return () => backHandler.remove();
+  }, [pathname]);
 
   if (!isLoaded) {
     return (
@@ -33,8 +48,20 @@ export default function AuthLayout() {
         gestureDirection: 'horizontal',
       }}
     >
-      <Stack.Screen name="sign-in" options={{ title: 'Sign In' }} />
-      <Stack.Screen name="sign-up" options={{ title: 'Sign Up' }} />
+      <Stack.Screen 
+        name="sign-in" 
+        options={{ 
+          title: 'Sign In',
+          gestureEnabled: false // Disable gesture navigation
+        }} 
+      />
+      <Stack.Screen 
+        name="sign-up" 
+        options={{ 
+          title: 'Sign Up',
+          gestureEnabled: false // Disable gesture navigation
+        }} 
+      />
       <Stack.Screen name="reset-password" options={{ title: 'Reset Password' }} />
     </Stack>
   );

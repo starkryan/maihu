@@ -39,7 +39,7 @@ export default function NotFoundScreen() {
 
             <Link
               href=".."
-              className="rounded-xl border border-[#10a37f] p-4">
+              className="rounded-xl border border-[#10a37f] p-4 mt-4">
               <View className="flex-row items-center justify-center space-x-2">
                 <ArrowLeft size={24} color="#10a37f" strokeWidth={2} />
                 <Text className="ml-2 text-center text-lg font-semibold text-[#10a37f]">

@@ -1,5 +1,5 @@
 import { useSignIn, useClerk } from '@clerk/clerk-expo';
-import { ArrowLeft, Mail, Eye, Lock, X } from 'lucide-react-native';
+import { ArrowLeft, X, Lock, Mail, Eye } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import React from 'react';
 import {
@@ -15,16 +15,18 @@ import {
   ActivityIndicator,
   Pressable,
 } from 'react-native';
-import { Toast } from '../Toast';
+import { useToast } from '../Toast/components/ToastManager';
 import { OtpInput } from "react-native-otp-entry";
 import Modal from 'react-native-modal';
 import * as SecureStore from 'expo-secure-store';
+import * as Haptics from 'expo-haptics';
 
 
 const ForgotPassword = () => {
   const { signIn, isLoaded } = useSignIn();
   const { signOut } = useClerk();
   const router = useRouter();
+  const { error: toastError, success } = useToast();
 
   const [emailAddress, setEmailAddress] = React.useState('');
   const [password, setPassword] = React.useState('');
@@ -48,6 +50,7 @@ const ForgotPassword = () => {
   });
   const [resetAttempts, setResetAttempts] = React.useState(0);
   const [nextResetTime, setNextResetTime] = React.useState<Date | null>(null);
+  const [isOTPValid, setIsOTPValid] = React.useState(true);
 
   React.useEffect(() => {
     if (resendTimer > 0) {
@@ -105,14 +108,14 @@ const ForgotPassword = () => {
         nextHour.setHours(nextHour.getHours() + 1);
         setNextResetTime(nextHour);
       }
-      Toast.error('Too many reset attempts. Please try again in 1 hour.');
+      toastError('Too many reset attempts. Please try again in 1 hour.');
       return;
     }
 
 
     if (!validateEmail(emailAddress)) {
       setIsValidEmail(false);
-      Toast.error('Please enter a valid email address');
+      toastError('Please enter a valid email address');
       return;
     }
 
@@ -128,17 +131,17 @@ const ForgotPassword = () => {
 
       setShowOTPModal(true);
       startResendTimer();
-      Toast.success('OTP sent to your email');
+      success('OTP sent to your email');
 
       setResetAttempts((prev) => prev + 1);
 
     } catch (err: unknown) {
       if (err instanceof Error) {
         const clerkError = err as { errors?: Array<{ message: string }> };
-        Toast.error(clerkError.errors?.[0]?.message || err.message);
+        toastError(clerkError.errors?.[0]?.message || err.message);
 
       } else {
-        Toast.error('Failed to send OTP');
+        toastError('Failed to send OTP');
       }
 
 
@@ -156,7 +159,7 @@ const ForgotPassword = () => {
         nextHour.setHours(nextHour.getHours() + 1);
         setNextResetTime(nextHour);
       }
-      Toast.error('Too many reset attempts. Please try again in 1 hour.');
+      toastError('Too many reset attempts. Please try again in 1 hour.');
 
       return;
     }
@@ -169,14 +172,14 @@ const ForgotPassword = () => {
         strategy: 'reset_password_email_code',
       });
       startResendTimer();
-      Toast.success('New OTP sent to your email');
+      success('New OTP sent to your email');
 
 
     } catch (err: unknown) {
       if (err instanceof Error) {
-        Toast.error((err as any).errors?.[0]?.message || err.message);
+        toastError((err as any).errors?.[0]?.message || err.message);
       } else {
-        Toast.error('Failed to resend OTP');
+        toastError('Failed to resend OTP');
 
 
       }
@@ -189,16 +192,14 @@ const ForgotPassword = () => {
     if (!isLoaded) return;
 
     if (!validatePassword(password)) {
-        setIsValidPassword(false);
-      Toast.error('Password must meet all requirements');
+      setIsValidPassword(false);
+      toastError('Password must meet all requirements');
       return;
     }
 
-
     if (!code) {
-      Toast.error('Please enter the OTP');
+      toastError('Please enter the verification code');
       return;
-
     }
 
     setIsValidPassword(true);
@@ -213,29 +214,34 @@ const ForgotPassword = () => {
 
       if (result.status === 'complete') {
         setShowOTPModal(false);
-
         await signOut();
         await SecureStore.deleteItemAsync('clerk-db-jwt');
         await SecureStore.deleteItemAsync('clerk-js-session-token');
         await SecureStore.deleteItemAsync('__clerk_client_jwt');
 
-        Toast.success('Password successfully updated! Please sign in with your new password');
-
-
-
+        success('Password successfully updated! Please sign in with your new password');
         setTimeout(() => {
           router.replace('/(auth)/sign-in');
         }, 100);
       }
     } catch (err: unknown) {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      setIsOTPValid(false);
+      
       if (err instanceof Error) {
         const clerkError = err as { errors?: Array<{ message: string }> };
-        Toast.error(clerkError.errors?.[0]?.message || err.message);
-
+        const errorMessage = clerkError.errors?.[0]?.message || err.message;
+        
+        if (errorMessage.toLowerCase().includes('code')) {
+          toastError('The verification code you entered is incorrect. Please check your email and try again.');
+        } else if (errorMessage.toLowerCase().includes('expired')) {
+          toastError('The verification code has expired. Please request a new code.');
+        } else {
+          toastError(errorMessage);
+        }
       } else {
-        Toast.error('Failed to reset password');
+        toastError('An error occurred while resetting your password. Please try again.');
       }
-
     } finally {
       setIsLoading(false);
     }
@@ -290,31 +296,35 @@ const ForgotPassword = () => {
             contentContainerStyle={{ flexGrow: 1 }}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}>
-            <View className="pt-5 px-4 mb-2">
+            <View className="pt-8 px-6">
               <TouchableOpacity
                 onPress={() => router.back()}
-                className="flex-row items-center p-2.5 rounded-full bg-gray-600/30 w-12">
-                <ArrowLeft size={18} color="#9ca3af" />
+                className="flex-row items-center p-3 rounded-full bg-gray-600/20 w-12 hover:bg-gray-600/30">
+                <ArrowLeft size={20} color="#9ca3af" />
               </TouchableOpacity>
             </View>
 
-            <View className="flex-1 justify-center py-8">
-              <View className="mb-10 px-8">
-                <Text className="mb-3 text-center text-3xl font-bold text-white">Forgot Password</Text>
-                <Text className="text-center text-base text-gray-300">
-                  Enter your email to receive an OTP
+            <View className="flex-1 justify-center py-12">
+              <View className="mb-12 px-8">
+                <Text className="mb-4 text-center text-4xl font-bold text-white">
+                  Reset Password
+                </Text>
+                <Text className="text-center text-base text-gray-300 px-4">
+                  Enter your email address and we'll send you a verification code
                 </Text>
               </View>
 
-              <View className="space-y-5 px-8">
+              <View className="space-y-6 px-8">
                 <View>
-                  <Text className="mb-2 font-medium text-gray-300">Email address</Text>
+                  <Text className="mb-3 font-medium text-gray-300 text-base">
+                    Email address
+                  </Text>
                   <View className="relative">
-                      <Mail size={20} color="#9ca3af" style={{ position: 'absolute', left: 16, top: 16 }} />
+                    <Mail size={20} color="#9ca3af" style={{ position: 'absolute', left: 16, top: 18 }} />
                     <TextInput
-                      className={`rounded-xl border-2 ${
+                      className={`rounded-2xl border-2 ${
                         isValidEmail ? 'border-gray-600' : 'border-red-500'
-                      } bg-transparent p-4 pl-12 text-white`}
+                      } bg-gray-700/20 p-4 pl-12 text-white text-base h-14`}
                       autoCapitalize="none"
                       value={emailAddress}
                       placeholder="Enter email"
@@ -328,32 +338,32 @@ const ForgotPassword = () => {
                     />
                   </View>
                   {!isValidEmail && (
-                    <Text className="mt-2 text-sm text-red-500">
+                    <Text className="mt-2.5 text-sm text-red-500">
                       Please enter a valid email address
                     </Text>
                   )}
                 </View>
               </View>
 
-              <View className="mt-8 px-8">
+              <View className="mt-10 px-8">
                 <TouchableOpacity
-                  className="rounded-xl bg-[#10a37f] p-4 shadow-sm active:bg-[#0e906f]"
+                  className="rounded-2xl bg-[#10a37f] p-4 shadow-lg active:bg-[#0e906f] h-14 justify-center"
                   onPress={onRequestOTP}
                   disabled={isLoading}>
                   {isLoading ? (
                     <ActivityIndicator color="white" />
                   ) : (
                     <Text className="text-center text-lg font-semibold text-white">
-                      Send OTP
+                      Send Verification Code
                     </Text>
                   )}
                 </TouchableOpacity>
               </View>
 
-              <View className="mt-6 flex-row justify-center">
-                <Text className="text-gray-300">Remember your password? </Text>
+              <View className="mt-8 flex-row justify-center">
+                <Text className="text-gray-300 text-base">Remember your password? </Text>
                 <Pressable onPress={() => router.replace('/(auth)/sign-in')}>
-                  <Text className="font-semibold text-[#10a37f]">Sign in</Text>
+                  <Text className="font-semibold text-[#10a37f] text-base">Sign in</Text>
                 </Pressable>
               </View>
             </View>
@@ -373,39 +383,54 @@ const ForgotPassword = () => {
           <View className="flex-1 justify-end">
             <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
               <View className="rounded-t-3xl bg-[#343541] p-8">
-                <View className="mb-4 items-end">
-                  <TouchableOpacity onPress={() => setShowOTPModal(false)}>
+                <View className="mb-6 items-end">
+                  <TouchableOpacity 
+                    onPress={() => setShowOTPModal(false)}
+                    className="p-2 rounded-full bg-gray-700/20">
                     <X size={24} color="#9ca3af" />
                   </TouchableOpacity>
                 </View>
-                <Text className="mb-2 text-2xl font-bold text-white">Reset Password</Text>
+                
+                <Text className="mb-4 text-3xl font-bold text-white">
+                  Enter Verification Code
+                </Text>
 
-                <View className="mb-6">
+                <View className="mb-8">
                   <OtpInput
                     numberOfDigits={6}
-                    onFilled={(text) => setCode(text)}
+                    onFilled={(text) => {
+                      setCode(text);
+                      setIsOTPValid(true);
+                    }}
                     theme={{
                       pinCodeContainerStyle: {
                         backgroundColor: "#40414f",
-                        borderColor: "#565869",
+                        borderColor: isOTPValid ? "#565869" : "#ef4444",
+                        borderRadius: 12,
+                        height: 52,
                       },
                       focusStickStyle: { backgroundColor: "#10a37f" },
                       focusedPinCodeContainerStyle: {
-                        borderColor: "#10a37f",
+                        borderColor: isOTPValid ? "#10a37f" : "#ef4444",
                       },
                       pinCodeTextStyle: { color: "white" },
                     }}
                   />
+                  {!isOTPValid && (
+                    <Text className="mt-2 text-sm text-red-500">
+                      Incorrect verification code. Please try again.
+                    </Text>
+                  )}
                 </View>
 
-                <View className="mb-6">
-                  <Text className="mb-2.5 font-medium text-gray-300">New Password</Text>
+                <View className="mb-8">
+                  <Text className="mb-3 font-medium text-gray-300 text-base">New Password</Text>
                   <View className="relative">
-                    <Lock size={20} color="#9ca3af" style={{ position: 'absolute', left: 16, top: 16 }} />
+                    <Lock size={20} color="#9ca3af" style={{ position: 'absolute', left: 16, top: 18 }} />
                     <TextInput
-                      className={`rounded-xl border-2 ${
+                      className={`rounded-2xl border-2 ${
                         isValidPassword ? 'border-gray-600' : 'border-red-500'
-                      } bg-transparent p-4 pl-12 pr-12 text-white`}
+                      } bg-gray-700/20 p-4 pl-12 pr-12 text-white h-14`}
                       placeholder="Enter new password"
                       placeholderTextColor="#9ca3af"
                       secureTextEntry={!passwordVisible}
@@ -427,7 +452,7 @@ const ForgotPassword = () => {
                 </View>
 
                 <TouchableOpacity
-                  className="rounded-xl bg-[#10a37f] p-4 shadow-sm active:bg-[#0e906f]"
+                  className="rounded-2xl bg-[#10a37f] p-4 shadow-lg active:bg-[#0e906f] h-14 justify-center"
                   onPress={onResetPassword}
                   disabled={isLoading}>
                   {isLoading ? (
@@ -439,7 +464,7 @@ const ForgotPassword = () => {
                   )}
                 </TouchableOpacity>
 
-                <View className="mt-6 flex-row justify-center items-center">
+                <View className="mt-8 flex-row justify-center items-center">
                   {resendTimer > 0 ? (
                     <Text className="text-gray-400 mr-2">
                       Resend OTP in {resendTimer}s
