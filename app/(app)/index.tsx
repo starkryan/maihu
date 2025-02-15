@@ -15,18 +15,11 @@ import {
   Mic,
   ChevronRight,
   SlidersHorizontal,
-  Globe,
-  Clock,
-  Users,
-  Palette,
-  User,
-  Monitor,
-  Smile,
   Plus,
   BarChart2,
-  MicOff
-} from 'lucide-react-native';
-import React, { useState, useEffect } from 'react';
+  Play,
+  Pause} from 'lucide-react-native';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -39,9 +32,7 @@ import {
   KeyboardAvoidingView,
   SafeAreaView,
   RefreshControl,
-  Modal,
-  PanResponder
-} from 'react-native';
+  Modal} from 'react-native';
 import Markdown from 'react-native-markdown-display';
 import { useToast } from '../Toast/components/ToastManager';
 import * as MediaLibrary from 'expo-media-library';
@@ -51,6 +42,9 @@ import {
   useSpeechRecognitionEvent,
 } from 'expo-speech-recognition';
 import * as SecureStore from 'expo-secure-store';
+import Svg, { Path } from 'react-native-svg';
+import { Audio } from 'expo-av';
+import { useLocalSearchParams } from 'expo-router';
 
 import { useScriptStore, languageFlags, optionIcons, optionMetadata } from '@/store/scriptStore';
 import AudioWave from '@/app/components/AudioWave';
@@ -80,39 +74,6 @@ const CONFIG = {
     },
   },
 };
-
-interface OptionButtonProps {
-  label: string;
-  isSelected: boolean;
-  onPress: () => void;
-}
-
-const OptionButton: React.FC<OptionButtonProps> = ({ label, isSelected, onPress }) => (
-  <TouchableOpacity
-    onPress={onPress}
-    activeOpacity={0.7}
-    style={{
-      minWidth: 80,
-      paddingHorizontal: 16,
-      paddingVertical: 10,
-      borderRadius: 12,
-      backgroundColor: isSelected ? '#10a37f' : '#343541',
-      borderWidth: 1,
-      borderColor: isSelected ? '#10a37f' : '#565869',
-      justifyContent: 'center',
-      alignItems: 'center',
-    }}>
-    <Text 
-      style={{
-        color: isSelected ? '#ffffff' : '#9ca3af',
-        fontSize: 14,
-        fontWeight: '500',
-        textAlign: 'center',
-      }}>
-      {label}
-    </Text>
-  </TouchableOpacity>
-);
 
 // Update the OptionSection component to show icons and emojis
 const OptionSection = ({
@@ -344,40 +305,6 @@ const MarkdownContent = ({ content }: { content: string }) => {
   );
 };
 
-// Add new WaveformBars component after the MarkdownContent component
-const WaveformBars = ({ isRecording }: { isRecording: boolean }) => {
-  const bars = 4; // Number of bars in the waveform
-  const [heights, setHeights] = useState(new Array(bars).fill(4));
-
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (isRecording) {
-      interval = setInterval(() => {
-        setHeights(prev => prev.map(() => Math.random() * 12 + 4)); // Random heights between 4 and 16
-      }, 100);
-    } else {
-      setHeights(new Array(bars).fill(4));
-    }
-    return () => clearInterval(interval);
-  }, [isRecording]);
-
-  return (
-    <View className="absolute inset-0 flex-row items-center justify-center gap-0.5">
-      {heights.map((height, index) => (
-        <View
-          key={index}
-          className="w-0.5 bg-[#10a37f]"
-          style={{
-            height,
-            opacity: isRecording ? 1 : 0,
-            transform: [{ scaleY: isRecording ? 1 : 0 }],
-          }}
-        />
-      ))}
-    </View>
-  );
-};
-
 // Add formatTime function before the VoiceInfoBubble component
 const formatTime = (seconds: number) => {
   const mins = Math.floor(seconds / 60);
@@ -385,9 +312,25 @@ const formatTime = (seconds: number) => {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 };
 
-// Update VoiceInfoBubble component to fix positioning and styling
-const VoiceInfoBubble = ({ isRecording, recordingTime }: { isRecording: boolean; recordingTime: number }) => {
-  if (!isRecording) return null;
+// Update VoiceInfoBubble component
+const VoiceInfoBubble = ({ 
+  isRecording, 
+  recordingTime,
+  recordingUri,
+  onPlay,
+  isPlaying,
+  onStop,
+  onClose 
+}: { 
+  isRecording: boolean; 
+  recordingTime: number;
+  recordingUri: string | null;
+  onPlay: (uri: string) => void;
+  isPlaying: boolean;
+  onStop: () => void;
+  onClose: () => void;
+}) => {
+  if (!isRecording && !recordingUri) return null;
 
   return (
     <View className="absolute -top-24 left-0 right-0 mx-4">
@@ -395,14 +338,40 @@ const VoiceInfoBubble = ({ isRecording, recordingTime }: { isRecording: boolean;
         <View className="flex-row items-center justify-between">
           <View className="flex-row items-center gap-3">
             <View className="w-10 h-10 rounded-full bg-white/10 items-center justify-center">
-              <Mic size={20} color="white" />
+              {isRecording ? (
+                <Mic size={20} color="white" />
+              ) : (
+                <TouchableOpacity
+                  onPress={() => recordingUri && (isPlaying ? onStop() : onPlay(recordingUri))}
+                  className="w-10 h-10 rounded-full bg-white/10 items-center justify-center"
+                >
+                  {isPlaying ? (
+                    <Pause size={20} color="white" />
+                  ) : (
+                    <Play size={20} color="white" />
+                  )}
+                </TouchableOpacity>
+              )}
             </View>
             <View>
-              <Text className="text-white font-semibold text-base">Recording...</Text>
-              <Text className="text-white/90 text-sm">{formatTime(recordingTime)}</Text>
+              <Text className="text-white font-semibold text-base">
+                {isRecording ? 'Recording...' : 'Preview Recording'}
+              </Text>
+              <Text className="text-white/90 text-sm">
+                {formatTime(recordingTime)}
+              </Text>
             </View>
           </View>
-          <AudioWave isRecording={isRecording} color="white" />
+          <View className="flex-row items-center gap-2">
+            <AudioWave isRecording={isRecording} color="white" />
+            {!isRecording && (
+              <TouchableOpacity 
+                onPress={onClose}
+                className="p-1.5 rounded-full bg-white/10">
+                <X size={14} color="white" />
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
       </View>
       <View 
@@ -441,52 +410,10 @@ const VoiceBubble = ({ isVisible, onClose }: { isVisible: boolean; onClose: () =
         className="absolute -bottom-2 left-3/4 w-4 h-4 bg-[#10a37f]"
         style={{
           transform: [
-            { rotate: '45deg' },
-            { rotateY: '180deg' }
+            { rotate: '45deg' }
           ]
         }}
       />
-    </View>
-  );
-};
-
-// Update the FirstTimeBubble component to remove absolute positioning
-const FirstTimeBubble = ({ isVisible, onClose }: { isVisible: boolean; onClose: () => void }) => {
-  if (!isVisible) return null;
-
-  return (
-    <View className="mr-4 animate-fadeIn">
-      <View className="bg-[#10a37f] rounded-2xl p-4 w-64">
-        <View className="flex-row items-center gap-3 mb-2">
-          <View className="w-8 h-8 rounded-full bg-white/10 items-center justify-center">
-            <SlidersHorizontal size={18} color="white" />
-          </View>
-          <View className="flex-1">
-            <Text className="text-white font-medium">Script Settings</Text>
-            <Text className="text-white/80 text-xs">Customize your script style</Text>
-          </View>
-          <TouchableOpacity 
-            onPress={onClose}
-            className="p-1.5 rounded-full bg-white/10">
-            <X size={14} color="white" />
-          </TouchableOpacity>
-        </View>
-        
-        <View className="space-y-2 mt-1">
-          <View className="flex-row items-center gap-2">
-            <View className="w-5 h-5 rounded-full bg-white/10 items-center justify-center">
-              <Plus size={14} color="white" />
-            </View>
-            <Text className="text-white/90 text-sm">Tap to customize options</Text>
-          </View>
-          <View className="flex-row items-center gap-2">
-            <View className="w-5 h-5 rounded-full bg-white/10 items-center justify-center">
-              <BarChart2 size={14} color="white" />
-            </View>
-            <Text className="text-white/90 text-sm">Optimize for your platform</Text>
-          </View>
-        </View>
-      </View>
     </View>
   );
 };
@@ -603,82 +530,25 @@ const ModalSettings = ({
   </Modal>
 );
 
-// Update the GeneratingAnimation component to accept and use the stopGeneration prop
+// Update GeneratingAnimation component with new styling
 const GeneratingAnimation = ({ onCancel }: { onCancel?: () => void }) => {
-  const [dots, setDots] = useState(0);
-  const icons = [
-    { icon: <Sparkles size={24} color="#10a37f" />, label: "Crafting ideas" },
-    { icon: <Globe size={24} color="#10a37f" />, label: "Researching" },
-    { icon: <Clock size={24} color="#10a37f" />, label: "Structuring" },
-    { icon: <Users size={24} color="#10a37f" />, label: "Personalizing" },
-    { icon: <Palette size={24} color="#10a37f" />, label: "Styling" },
-    { icon: <User size={24} color="#10a37f" />, label: "Reviewing" },
-    { icon: <Monitor size={24} color="#10a37f" />, label: "Optimizing" },
-    { icon: <Smile size={24} color="#10a37f" />, label: "Finalizing" },
-  ];
-
-  const [currentIconIndex, setCurrentIconIndex] = useState(0);
-
-  useEffect(() => {
-    const dotsInterval = setInterval(() => {
-      setDots((prev) => (prev + 1) % 4);
-    }, 500);
-
-    const iconInterval = setInterval(() => {
-      setCurrentIconIndex((prev) => (prev + 1) % icons.length);
-    }, 2000);
-
-    return () => {
-      clearInterval(dotsInterval);
-      clearInterval(iconInterval);
-    };
-  }, []);
-
   return (
-    <View className="items-center p-6 rounded-2xl bg-[#444654] mx-4 border border-[#565869]/50">
-      {/* Animated Icon Container */}
-      <View className="w-16 h-16 mb-4 items-center justify-center bg-[#10a37f]/10 rounded-full">
-        <View className="animate-pulse">
-          {icons[currentIconIndex].icon}
+    <View className="items-center p-8 rounded-3xl bg-[#282A36]/95 border border-[#383A59] shadow-2xl">
+      <View className="items-center mb-6">
+        <View className="bg-[#1e1f25] p-4 rounded-2xl mb-2">
+          <AudioWave isRecording={true} color="#10a37f" />
         </View>
-      </View>
-
-      {/* Progress Bar */}
-      <View className="w-48 h-1.5 bg-[#565869]/30 rounded-full mb-4 overflow-hidden">
-        <View 
-          className="h-full bg-[#10a37f] rounded-full"
-          style={{
-            width: `${((currentIconIndex + 1) / icons.length) * 100}%`,
-          }}
-        />
-      </View>
-
-      {/* Status Text */}
-      <View className="items-center">
-        <Text className="text-[#10a37f] text-lg font-semibold mb-1">
-          {icons[currentIconIndex].label}
+        <Text className="text-[#10a37f] text-lg font-semibold mt-4">
+          Crafting Your Script
         </Text>
-        <Text className="text-[#9ca3af] text-base">
-          {`Please wait${'.'.repeat(dots)}`}
+        <Text className="text-[#9ca3af] text-sm mt-2 text-center">
+          Using AI magic to create content
         </Text>
       </View>
 
-      {/* Tips Carousel */}
-      <View className="mt-6 p-4 bg-[#343541] rounded-xl border border-[#565869]/20">
-        <Text className="text-[#ececf1] text-sm text-center italic">
-          💡 Tip: {[
-            "Scripts are optimized for maximum engagement",
-            "Each section is carefully structured for flow",
-            "Adding visual cues for better retention",
-            "Incorporating proven storytelling techniques",
-          ][currentIconIndex % 4]}
-        </Text>
-      </View>
-
-      {/* Update Cancel Button */}
       {onCancel && (
         <TouchableOpacity
-          className="mt-4 px-6 py-2.5 rounded-full border border-[#10a37f]/30 bg-[#10a37f]/10 active:bg-[#10a37f]/20"
+          className="mt-4 px-6 py-3 rounded-xl border border-[#10a37f]/30 bg-[#10a37f]/10 active:bg-[#10a37f]/20"
           onPress={onCancel}>
           <Text className="text-[#10a37f] font-medium">
             Cancel Generation
@@ -690,17 +560,6 @@ const GeneratingAnimation = ({ onCancel }: { onCancel?: () => void }) => {
 };
 
 // Add new empty state component
-const EmptyState = () => (
-  <View className="items-center justify-center py-8">
-    <View className="bg-[#40414f] p-6 rounded-full mb-4">
-      <Sparkles size={32} color="#10a37f" />
-    </View>
-    <Text className="text-[#ececf1] text-xl font-bold mb-2">Ready to Create</Text>
-    <Text className="text-[#9ca3af] text-center px-6">
-      Enter your topic above and let AI craft your perfect script
-    </Text>
-  </View>
-);
 
 const MainPage = () => {
   const { info, success, warning, error: showError } = useToast();
@@ -709,20 +568,33 @@ const MainPage = () => {
     topic,
     script,
     loading,
-    error: scriptError,
     showOptions,
     scriptOptions,
     setTopic,
     setScript,
     setLoading,
     setError,
-    setShowOptions,
     updateScriptOption,
   } = useScriptStore();
 
   const { isLoaded, isSignedIn } = useAuth();
 
-  // Add state for controlling generation  };
+  // Add state for recording URI
+  const [recordingUri, setRecordingUri] = useState<string | null>(null);
+
+  // Add audio event handlers
+  useSpeechRecognitionEvent("audiostart", (event) => {
+    if (event.uri) {
+      console.log("Recording started:", event.uri);
+    }
+  });
+
+  useSpeechRecognitionEvent("audioend", (event) => {
+    if (event.uri) {
+      setRecordingUri(event.uri);
+      console.log("Recording saved:", event.uri);
+    }
+  });
 
   // Add state for controlling generation
   const [controller, setController] = React.useState<AbortController | null>(null);
@@ -736,7 +608,7 @@ const MainPage = () => {
     { text: 'Structuring your content... 📊', color: '#10a37f' },
     { text: 'Adding engaging hooks... ✨', color: '#8e8ea0' },
     { text: 'Polishing to perfection... ⭐', color: '#10a37f' },
-    { text: 'Finalizing your script... ��', color: '#8e8ea0' },
+    { text: 'Finalizing your script... ', color: '#8e8ea0' },
   ];
 
   // Add effect to rotate messages during loading
@@ -976,13 +848,17 @@ const MainPage = () => {
   const [waveformScale, setWaveformScale] = useState(1);
 
   // Add speech recognition timeout reference
-  const recordingTimeout = React.useRef<NodeJS.Timeout | null>(null);
+  const recordingTimeout = useRef<NodeJS.Timeout | null>(null);
 
   // Add new state for voice bubble
   const [showVoiceBubble, setShowVoiceBubble] = useState(false);
   
   // Add new state for settings bubble
   const [showSettingsBubble, setShowSettingsBubble] = useState(false);
+
+  // Add new state for sound and playback
+  const [sound, setSound] = useState<Audio.Sound | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
 
   // Add effect to check if it's first time
   useEffect(() => {
@@ -1036,19 +912,19 @@ const MainPage = () => {
 
   // Enhanced speech recognition handler
   useSpeechRecognitionEvent("result", (event) => {
-    const newTranscript = event.results[0]?.transcript;
-    if (newTranscript) {
-      if ('isFinal' in event.results[0]) {
-        setTranscript(prev => prev + ' ' + newTranscript);
-        setTopic(prev => prev + ' ' + newTranscript);
-        setInterimTranscript('');
-      } else {
-        setInterimTranscript(newTranscript);
-      }
+    if (event.results) {
+      const finalTranscript = event.results
+        .filter(result => result.confidence > 0)
+        .map(result => result.transcript)
+        .join(' ');
       
-      // Reset auto-stop timeout
-      if (recordingTimeout.current) clearTimeout(recordingTimeout.current);
-      recordingTimeout.current = setTimeout(stopListening, 30000); // Auto-stop after 30s silence
+      const currentInterim = event.results
+        .filter(result => result.confidence === 0)
+        .map(result => result.transcript)
+        .join(' ');
+
+      setTranscript(finalTranscript);
+      setInterimTranscript(currentInterim);
     }
   });
 
@@ -1073,101 +949,90 @@ const MainPage = () => {
     return () => clearInterval(interval);
   }, [isRecording]);
 
-  // Update startListening with better feedback
+  // Update startListening to enable recording
   const startListening = async () => {
-    const { granted } = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
-    if (!granted) {
-      showError('Microphone access needed for voice input');
-      return;
-    }
-    
     try {
+      // Check if speech recognition is available first
+      const isAvailable = await ExpoSpeechRecognitionModule.isRecognitionAvailable();
+      if (!isAvailable) {
+        showError('Speech recognition is not available on this device');
+        return;
+      }
+
+      // Request permissions
+      const { granted } = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+      if (!granted) {
+        showError('Microphone access needed for voice input');
+        return;
+      }
+
+      // Start recognition with improved options
       await ExpoSpeechRecognitionModule.start({
-        ...CONFIG.SPEECH_RECOGNITION,
-        partialResults: true,
+        lang: CONFIG.SPEECH_RECOGNITION.lang,
+        interimResults: true,
         continuous: true,
-        requiresOnDeviceRecognition: false,
         androidIntentOptions: {
-          ...CONFIG.SPEECH_RECOGNITION.androidIntentOptions,
-          EXTRA_MAX_RESULTS: 3,
+          EXTRA_LANGUAGE_MODEL: "web_search",
+          EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS: 10000,
         },
+        recordingOptions: {
+          persist: true,
+          outputFileName: `recording_${Date.now()}.wav`,
+          outputSampleRate: 16000,
+        }
       });
+
       setIsRecording(true);
-      setShowVoiceBubble(false); // Hide the instruction bubble when recording starts
       setTranscript('');
       setInterimTranscript('');
       setRecordingTime(0);
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+      
+      // Set a maximum recording duration
+      recordingTimeout.current = setTimeout(() => {
+        if (isRecording) {
+          stopListening();
+          warning('Maximum recording duration reached');
+        }
+      }, 30000); // 30 seconds max
+
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
       info('Listening... Speak now');
     } catch (error) {
+      console.error('Speech recognition start error:', error);
       showError('Could not start voice recording');
       setIsRecording(false);
     }
   };
 
-  // Update stopListening with automatic generation
+  // Update stopListening with better error handling
   const stopListening = async () => {
     try {
       await ExpoSpeechRecognitionModule.stop();
       setIsRecording(false);
       setWaveformScale(1);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       
-      if (transcript.trim()) {
-        const newTopic = (topic + ' ' + transcript).trim();
+      if (recordingTimeout.current) {
+        clearTimeout(recordingTimeout.current);
+      }
+
+      const finalText = (transcript + ' ' + interimTranscript).trim();
+      if (finalText) {
+        const newTopic = (topic + ' ' + finalText).trim();
         setTopic(newTopic);
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         success('Voice input added successfully!');
-        
-        // Automatically generate script after voice input
-        setTimeout(() => {
-          info('Generating script from voice input...');
-          generateScript(false);
-        }, 500); // Small delay for better UX
       } else {
         warning('No voice input detected');
       }
     } catch (error) {
+      console.error('Speech recognition stop error:', error);
       showError('Could not stop recording');
     } finally {
-      if (recordingTimeout.current) clearTimeout(recordingTimeout.current);
+      setIsRecording(false);
     }
   };
 
   // Update renderInput with enhanced UI
-  const renderInput = () => (
-    <View className="flex-row items-center gap-2">
-      <TextInput
-        placeholder="What's your video about?"
-        placeholderTextColor="#9ca3af80"
-        value={topic}
-        onChangeText={setTopic}
-        className="flex-1 rounded-2xl bg-[#40414f] px-5 py-4 text-white text-base border-2 border-[#565869] focus:border-[#10a37f]"
-        style={{
-          fontSize: 16,
-          lineHeight: 24,
-        }}
-        onFocus={triggerHaptic}
-        multiline
-      />
-      
-      {/* Generate Button next to input */}
-      <TouchableOpacity
-        className={`flex-row items-center justify-center rounded-2xl px-4 py-4 ${
-          loading ? 'bg-[#10a37f]/80' : 'bg-[#10a37f] active:bg-[#0e906f]'
-        }`}
-        style={{
-          shadowColor: '#10a37f',
-          shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.3,
-          shadowRadius: 8,
-          elevation: 6
-        }}
-        onPress={() => generateScript(false)}
-        disabled={loading}>
-        <Sparkles size={22} color="white" />
-      </TouchableOpacity>
-    </View>
-  );
 
   
 
@@ -1175,9 +1040,15 @@ const MainPage = () => {
   const renderBottomBar = () => (
     <View className="absolute bottom-0 left-0 right-0 bg-[#1e1f25] px-4 py-4 border-t border-[#2a2b32]">
       <View className="relative">
-        {isRecording && (
-          <VoiceInfoBubble isRecording={isRecording} recordingTime={recordingTime} />
-        )}
+        <VoiceInfoBubble 
+          isRecording={isRecording} 
+          recordingTime={recordingTime}
+          recordingUri={recordingUri}
+          onPlay={playRecording}
+          isPlaying={isPlaying}
+          onStop={stopPlayback}
+          onClose={handleCloseRecording}
+        />
         
         {showVoiceBubble && !isRecording && (
           <VoiceBubble 
@@ -1239,7 +1110,12 @@ const MainPage = () => {
   // Update the suggestion card rendering
   const renderSuggestions = () => (
     <View className="mb-6">
-      <ScrollView className="gap-3">
+      <ScrollView 
+        className="gap-3" 
+        contentContainerStyle={{
+          gap: 12, // Add explicit gap in contentContainerStyle
+          paddingHorizontal: 2 // Optional: add slight padding to avoid shadow clipping
+        }}>
         {topicSuggestions.map((suggestion, index) => (
           <TouchableOpacity
             key={index}
@@ -1271,6 +1147,120 @@ const MainPage = () => {
     triggerHaptic();
   };
 
+  // Add new functions for sound playback
+  const playRecording = async (uri: string) => {
+    try {
+      // Unload any existing sound first
+      if (sound) {
+        await sound.unloadAsync();
+      }
+
+      const { sound: newSound } = await Audio.Sound.createAsync(
+        { uri },
+        { shouldPlay: true }
+      );
+      
+      setSound(newSound);
+      setIsPlaying(true);
+
+      // Handle playback finished
+      newSound.setOnPlaybackStatusUpdate((status) => {
+        if (status && 'didJustFinish' in status && status.didJustFinish) {
+          setIsPlaying(false);
+        }
+      });
+
+      await newSound.playAsync();
+    } catch (error) {
+      console.error('Error playing recording:', error);
+      showError('Failed to play recording');
+    }
+  };
+
+  const stopPlayback = async () => {
+    try {
+      if (sound) {
+        await sound.stopAsync();
+        await sound.unloadAsync();
+        setSound(null);
+        setIsPlaying(false);
+      }
+    } catch (error) {
+      console.error('Error stopping playback:', error);
+    }
+  };
+
+  // Clean up sound when component unmounts
+  useEffect(() => {
+    return () => {
+      if (sound) {
+        sound.unloadAsync();
+      }
+    };
+  }, [sound]);
+
+  // Add Audio permission request in useEffect
+  useEffect(() => {
+    const setupAudio = async () => {
+      try {
+        await Audio.requestPermissionsAsync();
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: true,
+          playsInSilentModeIOS: true,
+          staysActiveInBackground: false,
+          shouldDuckAndroid: true,
+        });
+      } catch (error) {
+        console.error('Error setting up audio:', error);
+      }
+    };
+
+    setupAudio();
+  }, []);
+
+  // Add cleanup function
+  const cleanupOldRecordings = async () => {
+    try {
+      const cacheDir = FileSystem.cacheDirectory;
+      if (!cacheDir) return;
+
+      const files = await FileSystem.readDirectoryAsync(cacheDir);
+      
+      for (const file of files) {
+        if (file.startsWith('recording_') && file.endsWith('.wav')) {
+          try {
+            const filePath = cacheDir + file;
+            const fileInfo = await FileSystem.getInfoAsync(filePath);
+            
+            if (fileInfo.exists && fileInfo.modificationTime) {
+              const fileAge = Date.now() - fileInfo.modificationTime * 1000;
+              if (fileAge > 60 * 60 * 1000) { // 1 hour
+                await FileSystem.deleteAsync(filePath);
+              }
+            }
+          } catch (error) {
+            console.warn(`Failed to process file ${file}:`, error);
+            continue;
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('Cleanup error:', error);
+    }
+  };
+
+  // Update handleCloseRecording
+  const handleCloseRecording = async () => {
+    setRecordingUri(null);
+    setIsRecording(false);
+    setRecordingTime(0);
+    if (sound) {
+      await stopPlayback();
+    }
+    // Clean up old recordings
+    cleanupOldRecordings();
+  };
+
   // Remove the router.replace call and modify the auth check
   if (!isLoaded) {
     return (
@@ -1285,20 +1275,6 @@ const MainPage = () => {
     return null;
   }
 
-  const renderGenerateButton = () => (
-    <TouchableOpacity
-      className={`rounded-xl p-4 ${
-        loading ? 'bg-[#10a37f]/80' : 'bg-[#10a37f] active:bg-[#0e906f]'
-      }`}
-      onPress={() => generateScript(false)}
-      disabled={loading}>
-      {loading ? (
-        <GeneratingAnimation onCancel={stopGeneration} />
-      ) : (
-        <Sparkles color="white" size={24} />
-      )}
-    </TouchableOpacity>
-  );
 
   // Update script display container for better readability
   const renderScriptDisplay = () => (
@@ -1325,6 +1301,69 @@ const MainPage = () => {
       </View>
     )
   );
+
+  useSpeechRecognitionEvent("error", (event) => {
+    setIsRecording(false); // Always reset recording state on error
+    
+    switch(event.error) {
+      case 'not-allowed':
+        showError('Microphone permission is required');
+        break;
+      case 'no-speech':
+        warning('No speech detected');
+        break;
+      case 'network':
+        showError('Network error - check your connection');
+        break;
+      case 'service-not-allowed':
+        showError('Speech recognition is unavailable');
+        break;
+      case 'audio-capture':
+        showError('Could not access microphone');
+        break;
+      case 'aborted':
+        // Silent handling for user-initiated abort
+        break;
+      default:
+        showError(`Recognition error: ${event.message}`);
+    }
+  });
+
+  // Add volume change event handler
+  useSpeechRecognitionEvent("volumechange", (event) => {
+    // Value between -2 and 10, where <= 0 is inaudible
+    const volume = Math.max(0, event.value);
+    // Update wave animation based on volume
+    setWaveformScale(1 + (volume / 20)); // Subtle scaling based on volume
+  });
+
+  // Cleanup function for audio resources
+  useEffect(() => {
+    return () => {
+      // Cleanup on component unmount
+      if (sound) {
+        sound.unloadAsync();
+      }
+      if (isRecording) {
+        ExpoSpeechRecognitionModule.abort();
+      }
+      if (recordingTimeout.current) {
+        clearTimeout(recordingTimeout.current);
+      }
+    };
+  }, [sound, isRecording]);
+
+  const { instance } = useLocalSearchParams();
+  
+  // Reset state when instance changes
+  useEffect(() => {
+    if (instance) {
+      setTopic('');
+      setScript('');
+      setError('');
+      setLoading(false);
+    }
+  }, [instance]);
 
   return (
     <SafeAreaView className="flex-1 bg-[#1e1f25]">

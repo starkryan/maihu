@@ -7,6 +7,7 @@ import Modal from 'react-native-modal';
 import Sidebar from '../components/Sidebar';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
 
 const LayoutGroup = () => {
   const { isLoaded, isSignedIn } = useAuth();
@@ -16,6 +17,7 @@ const LayoutGroup = () => {
   const [loading, setLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const slideAnim = useRef(new Animated.Value(-280)).current;
+  const spinValue = useRef(new Animated.Value(0)).current;
 
   if (!isLoaded) {
     return null; // Keeps splash screen visible until auth loads
@@ -48,6 +50,11 @@ const LayoutGroup = () => {
     }
   };
 
+  const spin = spinValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg']
+  });
+
   return (
     <SafeAreaView className="flex-1 bg-[#343541]">
       <StatusBar style="light" />
@@ -63,10 +70,29 @@ const LayoutGroup = () => {
         </TouchableOpacity>
 
         <TouchableOpacity
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            
+            spinValue.setValue(0);
+            Animated.spring(spinValue, {
+              toValue: 1,
+              friction: 2,
+              tension: 80,
+              useNativeDriver: true,
+            }).start();
+          }}
           activeOpacity={0.7}
           className="w-10 h-10 items-center justify-center rounded-full bg-gray-600/30"
         >
-          <PenSquare size={20} color="#9ca3af" />
+          <Animated.View style={{ 
+            transform: [{ 
+              rotate: spin 
+            }, { 
+              scale: 1.2 
+            }] 
+          }}>
+            <PenSquare size={20} color="#9ca3af" />
+          </Animated.View>
         </TouchableOpacity>
       </View>
 
