@@ -1,8 +1,5 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import NetInfo from '@react-native-community/netinfo';
-import { View, Text } from 'react-native';
-import { WifiOff } from 'lucide-react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useToast } from './Toast/components/ToastManager';
 
 interface NetworkContextType {
@@ -14,36 +11,35 @@ const NetworkContext = createContext<NetworkContextType>({ isConnected: true });
 export const useNetworkContext = () => useContext(NetworkContext);
 
 export const NetworkProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [isConnected, setIsConnected] = React.useState(true);
-  const { info, success, warning, error: toastError } = useToast();
-  const [previousState, setPreviousState] = React.useState(true);
+  const [isConnected, setIsConnected] = useState(true);
+  const { success, warning } = useToast();
+  const previousState = useRef(true);
 
   useEffect(() => {
-    // Initial check
+    // Initial network check
     NetInfo.fetch().then(state => {
       setIsConnected(state.isConnected ?? true);
-      setPreviousState(state.isConnected ?? true);
+      previousState.current = state.isConnected ?? true;
     });
 
     // Subscribe to network state updates
     const unsubscribe = NetInfo.addEventListener(state => {
       const newConnectionState = state.isConnected ?? true;
-      setIsConnected(newConnectionState);
       
-      if (newConnectionState !== previousState) {
+      if (newConnectionState !== previousState.current) {
+        setIsConnected(newConnectionState);
+        previousState.current = newConnectionState;
+
         if (newConnectionState) {
           success('Back Online, Internet connection restored');
         } else {
           warning('Offline, No internet connection available');
         }
-        setPreviousState(newConnectionState);
       }
     });
 
-    return () => {
-      unsubscribe();
-    };
-  }, [previousState]);
+    return unsubscribe;
+  }, []);
 
   return (
     <NetworkContext.Provider value={{ isConnected }}>
@@ -51,3 +47,5 @@ export const NetworkProvider: React.FC<{ children: React.ReactNode }> = ({ child
     </NetworkContext.Provider>
   );
 };
+
+export default NetworkProvider;

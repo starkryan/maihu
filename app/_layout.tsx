@@ -12,7 +12,8 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { View, ActivityIndicator } from 'react-native';
 import ToastManager from './Toast/components/ToastManager';
 import { NetworkProvider } from './NetworkContext';
-// Ensure crypto polyfill
+
+
 if (!global.crypto) {
   global.crypto = {
     getRandomValues: expoCryptoGetRandomValues,
@@ -20,70 +21,62 @@ if (!global.crypto) {
 }
 
 // Retrieve Clerk publishable key
-const publishableKey = "pk_test_Z3Jvd24td2FscnVzLTEuY2xlcmsuYWNjb3VudHMuZGV2JA";
+const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
 if (!publishableKey) {
-  throw new Error("Missing Clerk Publishable Key");
+  throw new Error("Missing Clerk Publishable Key. Make sure it's set in your .env file.");
 }
 
-// Prevent auto-hide of SplashScreen
-SplashScreen.preventAutoHideAsync();
+// Move constants outside of the component
+const BACKGROUND_COLOR = '#343541';
+const LOADING_COLOR = '#10a37f';
 
 export default function RootLayout() {
-  return (
-    <NetworkProvider>
-      <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
-        <RootLayoutNav />
-      </ClerkProvider>
-    </NetworkProvider>
-  );
-}
-
-function RootLayoutNav() {
   const [appIsReady, setAppIsReady] = useState(false);
 
   useEffect(() => {
     async function prepare() {
       try {
-        // Perform any startup logic here (like fetching user data)
-      } catch (e) {
-        console.warn(e);
-      } finally {
+        await SplashScreen.preventAutoHideAsync();
         setAppIsReady(true);
-        SplashScreen.hideAsync();
+      } catch (e) {
+        console.error("Error during app preparation:", e);
+      } finally {
+        await SplashScreen.hideAsync();
       }
     }
-
     prepare();
   }, []);
 
   if (!appIsReady) {
     return (
-      <View className="flex-1 items-center justify-center bg-[#343541]">
-        <ActivityIndicator size="large" color="#10a37f" />
+      <View className="flex-1 items-center justify-center" style={{ backgroundColor: BACKGROUND_COLOR }}>
+        <ActivityIndicator size="large" color={LOADING_COLOR} />
       </View>
     );
   }
 
   return (
-    <View className="flex-1 bg-[#343541]">
-      <SafeAreaProvider
-        style={{ backgroundColor: '#343541' }}
-      >
-        <StatusBar style="light" backgroundColor="#343541" />
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: "#343541" },
-            animation: 'fade',
-          }}
-        >
-          <Stack.Screen name="index" />         
-          <Stack.Screen name="get-started" />   
-          <Stack.Screen name="(auth)" />       
-          <Stack.Screen name="(app)" />        
-        </Stack>
-        <ToastManager />
-      </SafeAreaProvider>
-    </View>
+    <ClerkProvider publishableKey={publishableKey!} tokenCache={tokenCache}>
+      <NetworkProvider>
+        <SafeAreaProvider>
+          <View className="flex-1" style={{ backgroundColor: BACKGROUND_COLOR }}>
+            <StatusBar style="light" backgroundColor={BACKGROUND_COLOR} />
+            <Stack
+              screenOptions={{
+                headerShown: false,
+                contentStyle: { backgroundColor: BACKGROUND_COLOR },
+                animation: 'fade',
+              }}
+            >
+              <Stack.Screen name="index" />         
+              <Stack.Screen name="get-started" />   
+              <Stack.Screen name="(auth)" />       
+              <Stack.Screen name="(app)" />        
+            </Stack>
+            <ToastManager />
+          </View>
+        </SafeAreaProvider>
+      </NetworkProvider>
+    </ClerkProvider>
   );
 }

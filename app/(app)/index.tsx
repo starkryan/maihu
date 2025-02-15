@@ -21,7 +21,10 @@ import {
   Palette,
   User,
   Monitor,
-  Smile
+  Smile,
+  Plus,
+  BarChart2,
+  MicOff
 } from 'lucide-react-native';
 import React, { useState, useEffect } from 'react';
 import {
@@ -36,13 +39,21 @@ import {
   KeyboardAvoidingView,
   SafeAreaView,
   RefreshControl,
-  Modal} from 'react-native';
+  Modal,
+  PanResponder
+} from 'react-native';
 import Markdown from 'react-native-markdown-display';
 import { useToast } from '../Toast/components/ToastManager';
 import * as MediaLibrary from 'expo-media-library';
 import * as Haptics from 'expo-haptics';
+import {
+  ExpoSpeechRecognitionModule,
+  useSpeechRecognitionEvent,
+} from 'expo-speech-recognition';
+import * as SecureStore from 'expo-secure-store';
 
 import { useScriptStore, languageFlags, optionIcons, optionMetadata } from '@/store/scriptStore';
+import AudioWave from '@/app/components/AudioWave';
 
 
 // Environment configuration (should use actual environment variables in production)
@@ -61,6 +72,12 @@ const CONFIG = {
       secondary: '#9ca3af',  // Gray text
     },
     error: '#ef4444',        // Error red
+  },
+  SPEECH_RECOGNITION: {
+    lang: 'en-US',
+    androidIntentOptions: {
+      EXTRA_LANGUAGE_MODEL: "web_search", // For better single-word recognition
+    },
   },
 };
 
@@ -323,6 +340,153 @@ const MarkdownContent = ({ content }: { content: string }) => {
         }}>
         {content}
       </Markdown>
+    </View>
+  );
+};
+
+// Add new WaveformBars component after the MarkdownContent component
+const WaveformBars = ({ isRecording }: { isRecording: boolean }) => {
+  const bars = 4; // Number of bars in the waveform
+  const [heights, setHeights] = useState(new Array(bars).fill(4));
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isRecording) {
+      interval = setInterval(() => {
+        setHeights(prev => prev.map(() => Math.random() * 12 + 4)); // Random heights between 4 and 16
+      }, 100);
+    } else {
+      setHeights(new Array(bars).fill(4));
+    }
+    return () => clearInterval(interval);
+  }, [isRecording]);
+
+  return (
+    <View className="absolute inset-0 flex-row items-center justify-center gap-0.5">
+      {heights.map((height, index) => (
+        <View
+          key={index}
+          className="w-0.5 bg-[#10a37f]"
+          style={{
+            height,
+            opacity: isRecording ? 1 : 0,
+            transform: [{ scaleY: isRecording ? 1 : 0 }],
+          }}
+        />
+      ))}
+    </View>
+  );
+};
+
+// Add formatTime function before the VoiceInfoBubble component
+const formatTime = (seconds: number) => {
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+};
+
+// Update VoiceInfoBubble component to fix positioning and styling
+const VoiceInfoBubble = ({ isRecording, recordingTime }: { isRecording: boolean; recordingTime: number }) => {
+  if (!isRecording) return null;
+
+  return (
+    <View className="absolute -top-24 left-0 right-0 mx-4">
+      <View className="bg-[#10a37f] rounded-2xl p-4 shadow-lg">
+        <View className="flex-row items-center justify-between">
+          <View className="flex-row items-center gap-3">
+            <View className="w-10 h-10 rounded-full bg-white/10 items-center justify-center">
+              <Mic size={20} color="white" />
+            </View>
+            <View>
+              <Text className="text-white font-semibold text-base">Recording...</Text>
+              <Text className="text-white/90 text-sm">{formatTime(recordingTime)}</Text>
+            </View>
+          </View>
+          <AudioWave isRecording={isRecording} color="white" />
+        </View>
+      </View>
+      <View 
+        className="absolute -bottom-2 left-1/4 w-4 h-4 bg-[#10a37f] shadow-lg"
+        style={{
+          transform: [{ rotate: '45deg' }]
+        }}
+      />
+    </View>
+  );
+};
+
+// Update VoiceBubble component for better positioning
+const VoiceBubble = ({ isVisible, onClose }: { isVisible: boolean; onClose: () => void }) => {
+  if (!isVisible) return null;
+
+  return (
+    <View className="absolute -top-32 left-0 right-0 mx-4">
+      <View className="bg-[#10a37f] rounded-2xl p-4">
+        <View className="flex-row items-center gap-3 mb-2">
+          <View className="w-8 h-8 rounded-full bg-white/10 items-center justify-center">
+            <Mic size={18} color="white" />
+          </View>
+          <View className="flex-1">
+            <Text className="text-white font-medium">Voice Input</Text>
+            <Text className="text-white/80 text-xs">Tap mic to start recording</Text>
+          </View>
+          <TouchableOpacity 
+            onPress={onClose}
+            className="p-1.5 rounded-full bg-white/10">
+            <X size={14} color="white" />
+          </TouchableOpacity>
+        </View>
+      </View>
+      <View 
+        className="absolute -bottom-2 left-3/4 w-4 h-4 bg-[#10a37f]"
+        style={{
+          transform: [
+            { rotate: '45deg' },
+            { rotateY: '180deg' }
+          ]
+        }}
+      />
+    </View>
+  );
+};
+
+// Update the FirstTimeBubble component to remove absolute positioning
+const FirstTimeBubble = ({ isVisible, onClose }: { isVisible: boolean; onClose: () => void }) => {
+  if (!isVisible) return null;
+
+  return (
+    <View className="mr-4 animate-fadeIn">
+      <View className="bg-[#10a37f] rounded-2xl p-4 w-64">
+        <View className="flex-row items-center gap-3 mb-2">
+          <View className="w-8 h-8 rounded-full bg-white/10 items-center justify-center">
+            <SlidersHorizontal size={18} color="white" />
+          </View>
+          <View className="flex-1">
+            <Text className="text-white font-medium">Script Settings</Text>
+            <Text className="text-white/80 text-xs">Customize your script style</Text>
+          </View>
+          <TouchableOpacity 
+            onPress={onClose}
+            className="p-1.5 rounded-full bg-white/10">
+            <X size={14} color="white" />
+          </TouchableOpacity>
+        </View>
+        
+        <View className="space-y-2 mt-1">
+          <View className="flex-row items-center gap-2">
+            <View className="w-5 h-5 rounded-full bg-white/10 items-center justify-center">
+              <Plus size={14} color="white" />
+            </View>
+            <Text className="text-white/90 text-sm">Tap to customize options</Text>
+          </View>
+          <View className="flex-row items-center gap-2">
+            <View className="w-5 h-5 rounded-full bg-white/10 items-center justify-center">
+              <BarChart2 size={14} color="white" />
+            </View>
+            <Text className="text-white/90 text-sm">Optimize for your platform</Text>
+          </View>
+        </View>
+      </View>
     </View>
   );
 };
@@ -615,17 +779,20 @@ const MainPage = () => {
     }
   };
 
-  // Enhance generate script with haptics and animations
+  // Update generateScript with enhanced feedback
   const generateScript = async (isRegenerate: boolean = false) => {
     if (!topic.trim()) {
       triggerHaptic();
-      showError('Please enter a topic before generating');
+      showError('Please enter a topic first');
       return;
     }
 
     triggerHaptic();
     if (isRegenerate) {
       setScript('');
+      info('Regenerating your script...');
+    } else {
+      info('Starting to generate your script...');
     }
 
     setLoading(true);
@@ -698,17 +865,16 @@ const MainPage = () => {
       // Check if aborted before updating state
       if (!newController.signal.aborted) {
         setScript(generatedText);
-        success('Script generated successfully!');
+        success('Script generated successfully! 🎉');
       }
     } catch (error: any) {
-      // Handle abort case first
       if (error.name === 'AbortError' || error.message?.includes('Aborted')) {
-        return; // Exit early without showing error
+        warning('Generation cancelled');
+        return;
       }
       
-      // Handle other errors
       console.error('Generation error:', error);
-      const errorMessage = error.message || 'Failed to generate script. Please check your connection and try again.';
+      const errorMessage = error.message || 'Failed to generate script. Please try again.';
       setError(errorMessage);
       showError(errorMessage);
     } finally {
@@ -724,10 +890,11 @@ const MainPage = () => {
     try {
       const { status } = await MediaLibrary.requestPermissionsAsync();
       if (status !== 'granted') {
-        showError('Storage permission required to share files');
+        showError('Storage permission needed to share files');
         return;
       }
 
+      info('Preparing file for sharing...');
       const fileName = `script-${Date.now()}.md`;
       const fileUri = FileSystem.documentDirectory + fileName;
 
@@ -737,9 +904,10 @@ const MainPage = () => {
         url: fileUri,
         message: script,
       });
+      success('Script shared successfully!');
     } catch (err) {
       console.error('Share error:', err);
-      showError('Failed to save or share the script');
+      showError('Unable to share script. Please try again.');
     }
   };
 
@@ -756,12 +924,16 @@ const MainPage = () => {
   // Add refresh state
   const [isRefreshing, setIsRefreshing] = useState(false);
   
-  // Add pull-to-refresh feedback
+  // Update onRefresh with feedback
   const onRefresh = React.useCallback(() => {
     setIsRefreshing(true);
     triggerHaptic();
     setError('');
-    setTimeout(() => setIsRefreshing(false), 1000);
+    info('Refreshing...');
+    setTimeout(() => {
+      setIsRefreshing(false);
+      success('Refreshed successfully!');
+    }, 1000);
   }, []);
 
   // Update topic suggestions UI
@@ -770,33 +942,23 @@ const MainPage = () => {
       icon: <Youtube size={24} color="#10a37f" />, 
       text: 'Tech Review',
       description: 'Create engaging product reviews',
-      bg: 'bg-[#10a37f15]',
-      border: 'border-[#10a37f40]'
     },
     { 
       icon: <Film size={24} color="#10a37f" />, 
       text: 'Film Analysis',
       description: 'Break down movies and shows',
-      bg: 'bg-[#10a37f15]',
-      border: 'border-[#10a37f40]'
     },
     { 
-      icon: <Camera size={20} color="#10a37f" />, 
+      icon: <Camera size={24} color="#10a37f" />, 
       text: 'Photography tutorial',
-      bg: 'bg-[#10a37f10]',
-      border: 'border-[#10a37f]'
     },
     { 
-      icon: <Mic size={20} color="#10a37f" />, 
+      icon: <Mic size={24} color="#10a37f" />, 
       text: 'Podcast episode',
-      bg: 'bg-[#10a37f10]',
-      border: 'border-[#10a37f]'
     },
     { 
-      icon: <Sparkles size={20} color="#10a37f" />, 
+      icon: <Sparkles size={24} color="#10a37f" />, 
       text: 'Viral challenge idea',
-      bg: 'bg-[#10a37f10]',
-      border: 'border-[#10a37f]'
     }
   ];
 
@@ -804,14 +966,309 @@ const MainPage = () => {
   // Add modal visibility state
   const [modalVisible, setModalVisible] = useState(false);
 
-  // Update open/close handlers
-  const openOptions = () => setModalVisible(true);
-  const closeOptions = () => setModalVisible(false);
+  // Add new state for recording
+  const [isRecording, setIsRecording] = useState(false);
+  const [transcript, setTranscript] = useState('');
+  const [interimTranscript, setInterimTranscript] = useState('');
+  const [recordingTime, setRecordingTime] = useState(0);
 
-  // Enhance topic suggestions with haptics
+  // Add waveform animation state
+  const [waveformScale, setWaveformScale] = useState(1);
+
+  // Add speech recognition timeout reference
+  const recordingTimeout = React.useRef<NodeJS.Timeout | null>(null);
+
+  // Add new state for voice bubble
+  const [showVoiceBubble, setShowVoiceBubble] = useState(false);
+  
+  // Add new state for settings bubble
+  const [showSettingsBubble, setShowSettingsBubble] = useState(false);
+
+  // Add effect to check if it's first time
+  useEffect(() => {
+    checkFirstTimeUser();
+  }, []);
+
+  // Add function to check first-time user
+  const checkFirstTimeUser = async () => {
+    try {
+      const hasSeenSettings = await SecureStore.getItemAsync('hasSeenSettings');
+      if (!hasSeenSettings) {
+        setShowSettingsBubble(true);
+      }
+    } catch (error) {
+      console.log('Error checking first time user:', error);
+    }
+  };
+
+  // Update openOptions to handle first-time user
+  const openOptions = async () => {
+    if (showSettingsBubble) {
+      try {
+        await SecureStore.setItemAsync('hasSeenSettings', 'true');
+        setShowSettingsBubble(false);
+      } catch (error) {
+        console.log('Error saving settings state:', error);
+      }
+    }
+    setModalVisible(true);
+  };
+
+  // Update handleTopicSelect with feedback
   const handleTopicSelect = (topic: string) => {
     triggerHaptic();
     setTopic(topic);
+    info(`Template selected: ${topic}`);
+  };
+
+  // Update handleMicPress
+  const handleMicPress = () => {
+    if (isRecording) {
+      stopListening();
+    } else if (!showVoiceBubble) {
+      setShowVoiceBubble(true);
+      triggerHaptic();
+    } else {
+      setShowVoiceBubble(false);
+      startListening();
+    }
+  };
+
+  // Enhanced speech recognition handler
+  useSpeechRecognitionEvent("result", (event) => {
+    const newTranscript = event.results[0]?.transcript;
+    if (newTranscript) {
+      if ('isFinal' in event.results[0]) {
+        setTranscript(prev => prev + ' ' + newTranscript);
+        setTopic(prev => prev + ' ' + newTranscript);
+        setInterimTranscript('');
+      } else {
+        setInterimTranscript(newTranscript);
+      }
+      
+      // Reset auto-stop timeout
+      if (recordingTimeout.current) clearTimeout(recordingTimeout.current);
+      recordingTimeout.current = setTimeout(stopListening, 30000); // Auto-stop after 30s silence
+    }
+  });
+
+  // Add waveform animation effect
+  useEffect(() => {
+    if (isRecording) {
+      const interval = setInterval(() => {
+        setWaveformScale(prev => prev === 1 ? 1.2 : 1);
+      }, 500);
+      return () => clearInterval(interval);
+    }
+  }, [isRecording]);
+
+  // Add recording timer
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isRecording) {
+      interval = setInterval(() => {
+        setRecordingTime(prev => prev + 1);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [isRecording]);
+
+  // Update startListening with better feedback
+  const startListening = async () => {
+    const { granted } = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+    if (!granted) {
+      showError('Microphone access needed for voice input');
+      return;
+    }
+    
+    try {
+      await ExpoSpeechRecognitionModule.start({
+        ...CONFIG.SPEECH_RECOGNITION,
+        partialResults: true,
+        continuous: true,
+        requiresOnDeviceRecognition: false,
+        androidIntentOptions: {
+          ...CONFIG.SPEECH_RECOGNITION.androidIntentOptions,
+          EXTRA_MAX_RESULTS: 3,
+        },
+      });
+      setIsRecording(true);
+      setShowVoiceBubble(false); // Hide the instruction bubble when recording starts
+      setTranscript('');
+      setInterimTranscript('');
+      setRecordingTime(0);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+      info('Listening... Speak now');
+    } catch (error) {
+      showError('Could not start voice recording');
+      setIsRecording(false);
+    }
+  };
+
+  // Update stopListening with automatic generation
+  const stopListening = async () => {
+    try {
+      await ExpoSpeechRecognitionModule.stop();
+      setIsRecording(false);
+      setWaveformScale(1);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      
+      if (transcript.trim()) {
+        const newTopic = (topic + ' ' + transcript).trim();
+        setTopic(newTopic);
+        success('Voice input added successfully!');
+        
+        // Automatically generate script after voice input
+        setTimeout(() => {
+          info('Generating script from voice input...');
+          generateScript(false);
+        }, 500); // Small delay for better UX
+      } else {
+        warning('No voice input detected');
+      }
+    } catch (error) {
+      showError('Could not stop recording');
+    } finally {
+      if (recordingTimeout.current) clearTimeout(recordingTimeout.current);
+    }
+  };
+
+  // Update renderInput with enhanced UI
+  const renderInput = () => (
+    <View className="flex-row items-center gap-2">
+      <TextInput
+        placeholder="What's your video about?"
+        placeholderTextColor="#9ca3af80"
+        value={topic}
+        onChangeText={setTopic}
+        className="flex-1 rounded-2xl bg-[#40414f] px-5 py-4 text-white text-base border-2 border-[#565869] focus:border-[#10a37f]"
+        style={{
+          fontSize: 16,
+          lineHeight: 24,
+        }}
+        onFocus={triggerHaptic}
+        multiline
+      />
+      
+      {/* Generate Button next to input */}
+      <TouchableOpacity
+        className={`flex-row items-center justify-center rounded-2xl px-4 py-4 ${
+          loading ? 'bg-[#10a37f]/80' : 'bg-[#10a37f] active:bg-[#0e906f]'
+        }`}
+        style={{
+          shadowColor: '#10a37f',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.3,
+          shadowRadius: 8,
+          elevation: 6
+        }}
+        onPress={() => generateScript(false)}
+        disabled={loading}>
+        <Sparkles size={22} color="white" />
+      </TouchableOpacity>
+    </View>
+  );
+
+  
+
+  // Update renderBottomBar for better spacing and touch targets
+  const renderBottomBar = () => (
+    <View className="absolute bottom-0 left-0 right-0 bg-[#1e1f25] px-4 py-4 border-t border-[#2a2b32]">
+      <View className="relative">
+        {isRecording && (
+          <VoiceInfoBubble isRecording={isRecording} recordingTime={recordingTime} />
+        )}
+        
+        {showVoiceBubble && !isRecording && (
+          <VoiceBubble 
+            isVisible={showVoiceBubble} 
+            onClose={() => setShowVoiceBubble(false)} 
+          />
+        )}
+
+        <View className="flex-row items-center gap-4">
+          <TouchableOpacity 
+            onPress={openOptions}
+            className="w-12 h-12 rounded-full bg-[#2a2b32] items-center justify-center active:bg-[#343541]">
+            <SlidersHorizontal size={22} color="#9ca3af" />
+          </TouchableOpacity>
+
+          <View className="flex-1 flex-row items-center bg-[#2a2b32] rounded-full px-4 py-2.5">
+            <TextInput
+              placeholder="What's your video about?"
+              placeholderTextColor="#9ca3af80"
+              value={topic}
+              onChangeText={setTopic}
+              className="flex-1 text-white text-base mr-2"
+              style={{ fontSize: 16 }}
+              multiline
+            />
+            
+            <View className="flex-row items-center gap-2">
+              <TouchableOpacity 
+                onPress={handleMicPress}
+                className={`p-3 rounded-full ${isRecording ? 'bg-[#10a37f]' : ''} active:bg-[#343541]`}>
+                {isRecording ? (
+                  <>
+                    <Mic size={22} color="white" />
+                    <View className="absolute -top-0.5 -right-0.5 w-3 h-3">
+                      <View className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                    </View>
+                  </>
+                ) : (
+                  <Mic size={22} color="#9ca3af" />
+                )}
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                onPress={() => generateScript(false)}
+                disabled={loading}
+                className="p-3 rounded-full active:bg-[#343541]">
+                <Sparkles 
+                  size={22} 
+                  color={loading ? "#9ca3af80" : "#10a37f"} 
+                />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </View>
+    </View>
+  );
+
+  // Update the suggestion card rendering
+  const renderSuggestions = () => (
+    <View className="mb-6">
+      <ScrollView className="gap-3">
+        {topicSuggestions.map((suggestion, index) => (
+          <TouchableOpacity
+            key={index}
+            onPress={() => handleTopicSelect(suggestion.text)}
+            className="flex-row items-center p-4 bg-[#2a2b32] rounded-xl border border-[#383942]">
+            <View className="w-12 h-12 rounded-xl bg-[#1e1f25] items-center justify-center mr-4">
+              {suggestion.icon}
+            </View>
+            <View className="flex-1">
+              <Text className="text-white text-lg font-medium mb-1">
+                {suggestion.text}
+              </Text>
+              {suggestion.description && (
+                <Text className="text-[#9ca3af] text-sm">
+                  {suggestion.description}
+                </Text>
+              )}
+            </View>
+            <ChevronRight size={24} color="#10a37f" />
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    </View>
+  );
+
+  // Add closeOptions function
+  const closeOptions = () => {
+    setModalVisible(false);
+    triggerHaptic();
   };
 
   // Remove the router.replace call and modify the auth check
@@ -828,17 +1285,6 @@ const MainPage = () => {
     return null;
   }
 
-  const renderInput = () => (
-    <TextInput
-      placeholder="What's your video about?"
-      placeholderTextColor="#9ca3af"
-      value={topic}
-      onChangeText={setTopic}
-      className="flex-1 rounded-xl bg-[#40414f] px-4 py-4 text-white text-base border-2 border-[#565869] focus:border-[#10a37f]"
-      onFocus={triggerHaptic}
-    />
-  );
-
   const renderGenerateButton = () => (
     <TouchableOpacity
       className={`rounded-xl p-4 ${
@@ -854,21 +1300,34 @@ const MainPage = () => {
     </TouchableOpacity>
   );
 
-  return (
-    <SafeAreaView className="flex-1 bg-[#343541]">
-      {/* Modern Header
-      <View className="px-4 py-4 border-b border-[#565869]/30 flex-row items-center justify-between">
-        <View className="flex-row items-center gap-2">
-          <Sparkles size={24} color="#10a37f" />
-          <Text className="text-white text-xl font-bold">Script AI</Text>
+  // Update script display container for better readability
+  const renderScriptDisplay = () => (
+    script && (
+      <View className="rounded-3xl bg-[#282A36] overflow-hidden border border-[#383A59] animate-fadeIn mb-20">
+        <View className="flex-row items-center justify-between p-4 bg-[#40414f] border-b border-[#383A59]">
+          <Text className="text-[#ececf1] text-lg font-bold">Generated Script</Text>
+          <View className="flex-row gap-3">
+            <TouchableOpacity 
+              className="p-2.5 rounded-xl bg-[#343541] active:bg-[#2a2b32]"
+              onPress={handleCopyToClipboard}>
+              <Copy size={20} color="#10a37f" />
+            </TouchableOpacity>
+            <TouchableOpacity 
+              className="p-2.5 rounded-xl bg-[#343541] active:bg-[#2a2b32]"
+              onPress={handleFileShare}>
+              <Share2 size={20} color="#10a37f" />
+            </TouchableOpacity>
+          </View>
         </View>
-        <TouchableOpacity 
-          className="p-2.5 rounded-full bg-[#40414f] active:bg-[#565869]"
-          onPress={openOptions}>
-          <Settings size={22} color="#10a37f" />
-        </TouchableOpacity>
-      </View> */}
+        <View className="p-5">
+          <MarkdownContent content={script} />
+        </View>
+      </View>
+    )
+  );
 
+  return (
+    <SafeAreaView className="flex-1 bg-[#1e1f25]">
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         className="flex-1">
@@ -877,7 +1336,7 @@ const MainPage = () => {
           className="flex-1"
           contentContainerStyle={{ 
             padding: 16,
-            paddingBottom: Platform.select({ ios: 120, android: 140 }) 
+            paddingBottom: Platform.select({ ios: 140, android: 160 }) 
           }}
           refreshControl={
             <RefreshControl
@@ -885,111 +1344,17 @@ const MainPage = () => {
               onRefresh={onRefresh}
               tintColor="#10a37f"
               colors={['#10a37f']}
-              progressBackgroundColor="#343541"
+              progressBackgroundColor="#1e1f25"
             />
           }>
 
-          {/* Show empty state when no script and not loading */}
-          {!script && !loading && <EmptyState />}
+          {!script && !loading && renderSuggestions()}
+          {renderScriptDisplay()}
 
-          {/* Enhanced topic suggestions with better feedback */}
-          {!script && !loading && (
-            <View className="mb-6">
-              <View className="flex-row items-center gap-2 mb-4">
-                <Lightbulb size={22} color="#10a37f" />
-                <Text className="text-[#F8FAFC] text-lg font-semibold">Quick Templates</Text>
-              </View>
-              <View className="gap-3">
-                {topicSuggestions.map((suggestion, index) => (
-                  <TouchableOpacity
-                    key={index}
-                    className="flex-row items-center gap-4 rounded-2xl p-4 bg-[#282A36] border border-[#383A59] active:bg-[#2D2D3D]"
-                    onPress={() => handleTopicSelect(suggestion.text)}>
-                    <View className="p-2.5 bg-[#10a37f]/10 rounded-xl">
-                      {React.cloneElement(suggestion.icon, { color: '#10a37f' })}
-                    </View>
-                    <View className="flex-1">
-                      <Text className="text-[#F8FAFC] text-base font-semibold">
-                        {suggestion.text}
-                      </Text>
-                      {suggestion.description && (
-                        <Text className="text-[#94A3B8] text-sm mt-0.5">
-                          {suggestion.description}
-                        </Text>
-                      )}
-                    </View>
-                    <ChevronRight size={20} color="#10a37f" />
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-          )}
-
-          {/* Enhanced script display with animations */}
-          {script && (
-            <View className="rounded-3xl bg-[#282A36] overflow-hidden border border-[#383A59] animate-fadeIn">
-              <View className="flex-row items-center justify-between p-4 bg-[#40414f]">
-                <Text className="text-[#ececf1] text-lg font-bold">Your Script</Text>
-                <View className="flex-row gap-4">
-                  <TouchableOpacity 
-                    className="p-2 rounded-lg bg-[#343541] active:opacity-80"
-                    onPress={handleCopyToClipboard}>
-                    <Copy size={20} color="#10a37f" />
-                  </TouchableOpacity>
-                  <TouchableOpacity 
-                    className="p-2 rounded-lg bg-[#343541] active:opacity-80"
-                    onPress={handleFileShare}>
-                    <Share2 size={20} color="#10a37f" />
-                  </TouchableOpacity>
-                </View>
-              </View>
-              <View className="p-4">
-                <MarkdownContent content={script} />
-              </View>
-            </View>
-          )}
         </ScrollView>
 
-        {/* Enhanced input bar with visual feedback */}
-        <View className="w-full border-t border-[#565869]/30 bg-[#343541] px-4 py-4">
-          <View className="flex-row items-center gap-3">
-            <TextInput
-              placeholder="What's your video about?"
-              placeholderTextColor="#9ca3af"
-              value={topic}
-              onChangeText={setTopic}
-              className="flex-1 rounded-xl bg-[#40414f] px-4 py-4 text-white text-base border-2 border-[#565869] focus:border-[#10a37f]"
-              onFocus={triggerHaptic}
-            />
-            <TouchableOpacity
-              className={`rounded-xl p-4 ${
-                loading ? 'bg-[#10a37f]/80' : 'bg-[#10a37f] active:bg-[#0e906f]'
-              }`}
-              onPress={() => generateScript(false)}
-              disabled={loading}>
-              {loading ? (
-                <GeneratingAnimation onCancel={stopGeneration} />
-              ) : (
-                <Sparkles color="white" size={24} />
-              )}
-            </TouchableOpacity>
-          </View>
-          
-          {/* Enhanced settings button */}
-          <TouchableOpacity 
-            onPress={() => {
-              triggerHaptic();
-              openOptions();
-            }}
-            className="mt-3 flex-row items-center justify-center py-3 px-4 rounded-xl bg-[#40414f] active:bg-[#565869]">
-            <SlidersHorizontal size={16} color="#10a37f" />
-            <Text className="ml-2 text-[#94A3B8] text-sm font-medium">
-              Customize Script Settings
-            </Text>
-          </TouchableOpacity>
-        </View>
+        {renderBottomBar()}
 
-        {/* Replace BottomSheet with ModalSettings */}
         <ModalSettings
           visible={modalVisible}
           scriptOptions={scriptOptions}
@@ -997,9 +1362,8 @@ const MainPage = () => {
           closeOptions={closeOptions}
         />
 
-        {/* Update Loading Overlay */}
         {loading && (
-          <View className="absolute top-0 left-0 right-0 bottom-0 justify-center items-center bg-[#343541]/95">
+          <View className="absolute inset-0 justify-center items-center bg-black/80">
             <GeneratingAnimation onCancel={stopGeneration} />
           </View>
         )}

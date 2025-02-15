@@ -127,9 +127,8 @@ const ToastManager: React.FC<ToastManagerProps> = ({
   };
 
   const animateToast = useCallback((show: boolean) => {
-    const initialPosition = finalPosition === 'top' ? -100 : 100;
+    const initialPosition = finalPosition === 'top' ? -150 : 150;
     
-    // Reset position before showing
     if (show) {
       translateY.setValue(initialPosition);
       opacity.setValue(0);
@@ -137,15 +136,15 @@ const ToastManager: React.FC<ToastManagerProps> = ({
 
     Animated.parallel([
       Animated.spring(translateY, {
-        toValue: show ? 0 : (finalPosition === 'top' ? -100 : 100),
+        toValue: show ? 0 : (finalPosition === 'top' ? -150 : 150),
         useNativeDriver: true,
-        damping: 15,
-        mass: 1,
-        stiffness: 200,
+        damping: 18,
+        mass: 0.8,
+        stiffness: 250,
       }),
       Animated.timing(opacity, {
         toValue: show ? 1 : 0,
-        duration: 200,
+        duration: 250,
         useNativeDriver: true,
       })
     ]).start();
@@ -179,7 +178,7 @@ const ToastManager: React.FC<ToastManagerProps> = ({
   }, [isVisible, toastDuration, hide, animateToast]);
 
   const calculatePosition = useCallback((position: ToastPosition, screenHeight: number): number => {
-    const toastHeight = RFPercentage(9);
+    const toastHeight = RFPercentage(7);
     const positions = {
       top: insets.top + toastHeight / 2,
       center: (screenHeight - toastHeight) / 2,
@@ -224,27 +223,23 @@ const ToastManager: React.FC<ToastManagerProps> = ({
 
   const resume = useCallback(() => {
     if (!isVisible) return;
-    
+  
     // Clear any existing timeout
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
     }
-
-    const currentValue = progressAnim.getValue();
-    const remaining = toastDuration * (1 - currentValue);
-    
-    progressAnim.setValue(currentValue);
-    
+  
+    // Start the animation from the current position
     Animated.timing(progressAnim, {
       toValue: 1,
-      duration: remaining,
+      duration: toastDuration,
       useNativeDriver: true,
-    }).start();
-    
-    timeoutRef.current = setTimeout(() => {
-      hide();
-      progressAnim.setValue(0);
-    }, remaining);
+    }).start(({ finished }) => {
+      if (finished) {
+        hide();
+        progressAnim.setValue(0);
+      }
+    });
   }, [isVisible, toastDuration, progressAnim, hide]);
 
   // Update progress bar interpolation to use transform
@@ -275,48 +270,47 @@ const ToastManager: React.FC<ToastManagerProps> = ({
       backdropOpacity={backdropOpacity}
       hasBackdrop={hasBackdrop}
       className="m-0 justify-center items-center"
+      statusBarTranslucent={true}
     >
       <Animated.View
         accessible={true}
         accessibilityRole="alert"
         accessibilityLabel={`${type} notification: ${message}`}
-        className={`absolute w-[90%] max-w-[320px] min-h-[40px] rounded-xl shadow-lg border-2 ${
-          type === 'info' ? 'border-[#10a37f]/30' :
-          type === 'success' ? 'border-[#10a37f]/30' :
-          type === 'warning' ? 'border-yellow-500/30' :
-          'border-red-500/30'
+        className={`absolute w-[85%] max-w-[300px] min-h-[35px] rounded-xl shadow-2xl border ${
+          type === 'info' ? 'border-[#10a37f]/40' :
+          type === 'success' ? 'border-[#10a37f]/40' :
+          type === 'warning' ? 'border-yellow-500/40' :
+          'border-red-500/40'
         } ${
-          finalTheme === 'dark' ? 'bg-[#343541]' : 'bg-white'
+          finalTheme === 'dark' ? 'bg-[#40414f]' : 'bg-white'
         }`}
         style={[
           {
             top: calculatePosition(finalPosition, height),
             transform: [{ translateY }],
             opacity,
+            elevation: 5,
           },
           style,
         ]}
       >
         <View className={`flex-row items-center p-3 gap-2 ${finalShowCloseIcon ? 'pr-9' : 'pr-3'}`}>
           <View
-            className={`rounded-xl p-1.5 border ${
-              type === 'info' ? 'bg-[#10a37f]/10 border-[#10a37f]/30' :
-              type === 'success' ? 'bg-[#10a37f]/10 border-[#10a37f]/30' :
-              type === 'warning' ? 'bg-yellow-100/10 border-yellow-500/30' :
-              'bg-red-100/10 border-red-500/30'
+            className={`rounded-xl p-1.5 border-[1.5px] ${
+              type === 'info' ? 'bg-[#10a37f]/15 border-[#10a37f]/40' :
+              type === 'success' ? 'bg-[#10a37f]/15 border-[#10a37f]/40' :
+              type === 'warning' ? 'bg-yellow-100/15 border-yellow-500/40' :
+              'bg-red-100/15 border-red-500/40'
             }`}
           >
             {getIcon()}
           </View>
           <Text 
-            className={`flex-1 font-medium text-sm ${
-              finalTheme === 'dark' ? 'text-gray-300' : 'text-gray-800'
+            className={`flex-1 font-medium text-[12px] leading-4 ${
+              finalTheme === 'dark' ? 'text-gray-200' : 'text-gray-800'
             }`}
-            style={[
-              textStyle,
-              { flexWrap: 'wrap' }  // Add this to handle long text
-            ]}
-            numberOfLines={3}  // Optional: limit to 3 lines, remove if you want unlimited
+            style={[textStyle]}
+            numberOfLines={3}
           >
             {message}
           </Text>
@@ -324,27 +318,27 @@ const ToastManager: React.FC<ToastManagerProps> = ({
 
         {finalShowCloseIcon && (
           <TouchableOpacity 
-            onPress={hideToast} 
-            activeOpacity={0.7} 
-            className={`absolute right-2 top-2 p-1.5 rounded-xl border ${
-              type === 'info' ? 'bg-[#10a37f]/10 border-[#10a37f]/30' :
-              type === 'success' ? 'bg-[#10a37f]/10 border-[#10a37f]/30' :
-              type === 'warning' ? 'bg-yellow-100/10 border-yellow-500/30' :
-              'bg-red-100/10 border-red-500/30'
+            onPress={hideToast}
+            activeOpacity={0.7}
+            className={`absolute right-2 top-2 p-1 rounded-xl border-[1.5px] ${
+              type === 'info' ? 'bg-[#10a37f]/15 border-[#10a37f]/40' :
+              type === 'success' ? 'bg-[#10a37f]/15 border-[#10a37f]/40' :
+              type === 'warning' ? 'bg-yellow-100/15 border-yellow-500/40' :
+              'bg-red-100/15 border-red-500/40'
             }`}
           >
-            <X size={16} color={getToastColor()} strokeWidth={2.5} />
+            <X size={14} color={getToastColor()} strokeWidth={2.5} />
           </TouchableOpacity>
         )}
 
         {finalShowProgressBar && (
-          <View className="mx-4 mb-3">
+          <View className="mx-3 mb-3">
             <View 
-              className={`h-1 rounded-full overflow-hidden border ${
-                type === 'info' ? 'bg-[#10a37f]/10 border-[#10a37f]/30' :
-                type === 'success' ? 'bg-[#10a37f]/10 border-[#10a37f]/30' :
-                type === 'warning' ? 'bg-yellow-100/10 border-yellow-500/30' :
-                'bg-red-100/10 border-red-500/30'
+              className={`h-1 rounded-full overflow-hidden border-[1.5px] ${
+                type === 'info' ? 'bg-[#10a37f]/15 border-[#10a37f]/40' :
+                type === 'success' ? 'bg-[#10a37f]/15 border-[#10a37f]/40' :
+                type === 'warning' ? 'bg-yellow-100/15 border-yellow-500/40' :
+                'bg-red-100/15 border-red-500/40'
               }`}
             >
               <Animated.View 
@@ -356,13 +350,9 @@ const ToastManager: React.FC<ToastManagerProps> = ({
                 }`}
                 style={{ 
                   transform: [{
-                    scaleX: progressInterpolation.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [1, 0]
-                    })
+                    scaleX: progressInterpolation
                   }],
-                  width: '100%',
-                  transformOrigin: 'left'
+                  width: '100%'
                 }} 
               />
             </View>

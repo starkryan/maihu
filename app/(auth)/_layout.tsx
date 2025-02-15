@@ -1,6 +1,6 @@
 import { useAuth } from '@clerk/clerk-expo';
 import { Stack, useRouter, usePathname } from 'expo-router';
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, ActivityIndicator, BackHandler } from 'react-native';
 
 export default function AuthLayout() {
@@ -8,23 +8,22 @@ export default function AuthLayout() {
   const router = useRouter();
   const pathname = usePathname();
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (isLoaded && isSignedIn) {
       router.replace('/(app)');
     }
-  }, [isLoaded, isSignedIn]);
+  }, [isLoaded, isSignedIn, router]);
 
-  // Handle back button press
-  React.useEffect(() => {
-    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
-      // If we're on sign-in or sign-up, exit the app instead of going back
+  useEffect(() => {
+    const handleBackPress = () => {
       if (pathname === '/(auth)/sign-in' || pathname === '/(auth)/sign-up') {
         BackHandler.exitApp();
-        return true;
+        return true; // Prevent default back action
       }
       return false;
-    });
+    };
 
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', handleBackPress);
     return () => backHandler.remove();
   }, [pathname]);
 
@@ -48,20 +47,8 @@ export default function AuthLayout() {
         gestureDirection: 'horizontal',
       }}
     >
-      <Stack.Screen 
-        name="sign-in" 
-        options={{ 
-          title: 'Sign In',
-          gestureEnabled: false // Disable gesture navigation
-        }} 
-      />
-      <Stack.Screen 
-        name="sign-up" 
-        options={{ 
-          title: 'Sign Up',
-          gestureEnabled: false // Disable gesture navigation
-        }} 
-      />
+      <Stack.Screen name="sign-in" options={{ title: 'Sign In', gestureEnabled: false }} />
+      <Stack.Screen name="sign-up" options={{ title: 'Sign Up', gestureEnabled: false }} />
       <Stack.Screen name="reset-password" options={{ title: 'Reset Password' }} />
     </Stack>
   );
