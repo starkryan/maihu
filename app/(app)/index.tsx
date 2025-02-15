@@ -13,6 +13,7 @@ import {
   Film,
   Camera,
   Mic,
+  MicOff,
   ChevronRight,
   SlidersHorizontal,
   Plus,
@@ -42,7 +43,7 @@ import {
   useSpeechRecognitionEvent,
 } from 'expo-speech-recognition';
 import * as SecureStore from 'expo-secure-store';
-import Svg, { Path } from 'react-native-svg';
+
 import { Audio } from 'expo-av';
 import { useLocalSearchParams } from 'expo-router';
 
@@ -52,30 +53,35 @@ import AudioWave from '@/app/components/AudioWave';
 
 // Environment configuration (should use actual environment variables in production)
 const CONFIG = {
-  GEMINI_API_KEY:
-    Constants.expoConfig?.extra?.GOOGLE_GEMINI_API_KEY || 'AIzaSyAs4vFUhoajF79bzBdpP1fgVNgPa8whAEU',
+  GEMINI_API_KEY: Constants.expoConfig?.extra?.GOOGLE_GEMINI_API_KEY || 'AIzaSyAs4vFUhoajF79bzBdpP1fgVNgPa8whAEU',
   COLORS: {
-    primary: '#10a37f',      // Updated to match green theme
-    secondary: '#0e906f',    // Darker green for active states
-    background: '#343541',   // Updated background color
-    surface: '#40414f',      // Updated surface color
-    inputBg: '#40414f',      // Updated input background
-    border: '#565869',       // Updated border color
+    primary: '#10a37f',
+    secondary: '#0e906f',
+    background: '#1e1f25',    // Darker background for Android
+    surface: '#2a2b32',       // Adjusted surface color
+    inputBg: '#2a2b32',
+    border: '#383942',        // More visible borders for Android
     text: {
-      primary: '#ffffff',    // White text
-      secondary: '#9ca3af',  // Gray text
+      primary: '#ffffff',
+      secondary: '#9ca3af',
     },
-    error: '#ef4444',        // Error red
+    error: '#ef4444',
   },
   SPEECH_RECOGNITION: {
     lang: 'en-US',
     androidIntentOptions: {
-      EXTRA_LANGUAGE_MODEL: "web_search", // For better single-word recognition
+      EXTRA_LANGUAGE_MODEL: "free_form",           // Better for Android speech
+      EXTRA_MAX_RESULTS: 1,                        // Limit results for better accuracy
+      EXTRA_PARTIAL_RESULTS: true,                 // Enable partial results
+      EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS: 0, // No minimum length
+      EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS: 1500, // Shorter silence detection
+      EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS: 1000,
     },
+    MAX_DURATION: 30000,
   },
-};
+} as const;
 
-// Update the OptionSection component to show icons and emojis
+// Update the OptionSection component
 const OptionSection = ({
   title,
   options,
@@ -92,10 +98,10 @@ const OptionSection = ({
   const metadata = optionMetadata[key as keyof typeof optionMetadata];
 
   return (
-    <View style={{ marginBottom: 20 }}>
-      <View className="flex-row items-center gap-2 mb-3">
-        <Text className="text-[#10a37f] text-lg">{icon?.emoji}</Text>
-        <Text className="text-[#9ca3af] text-base font-medium">
+    <View className="mb-6">
+      <View className="flex-row items-center gap-2.5 mb-3.5">
+        <Text className="text-[#10a37f] text-lg sm:text-xl">{icon?.emoji}</Text>
+        <Text className="text-[#ececf1] text-base sm:text-lg font-semibold">
           {title}
         </Text>
       </View>
@@ -104,10 +110,9 @@ const OptionSection = ({
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={{
           paddingHorizontal: 4,
-          gap: 8,
+          gap: 10,
         }}>
         {options.map((option, index) => {
-          // Get the corresponding emoji for this option if available
           const optionEmoji = metadata?.icons?.[index] || '';
           
           return (
@@ -116,18 +121,18 @@ const OptionSection = ({
               onPress={() => onSelect(index)}
               activeOpacity={0.7}
               className={`
-                min-w-[80px] px-4 py-3 rounded-xl
-                flex-row items-center justify-center gap-2
-                ${selectedValue === index ? 'bg-[#10a37f]' : 'bg-[#343541]'}
-                border ${selectedValue === index ? 'border-[#10a37f]' : 'border-[#565869]'}
+                min-w-[80px] sm:min-w-[100px] px-4 sm:px-5 py-3 sm:py-4 rounded-2xl
+                flex-row items-center justify-center gap-2.5
+                ${selectedValue === index ? 'bg-[#10a37f]' : 'bg-[#2a2b32]'}
+                border ${selectedValue === index ? 'border-[#0e906f]' : 'border-[#383942]'}
               `}>
               {optionEmoji && (
-                <Text className="text-base">{optionEmoji}</Text>
+                <Text className="text-base sm:text-lg">{optionEmoji}</Text>
               )}
               <Text 
                 className={`
-                  text-sm font-medium
-                  ${selectedValue === index ? 'text-white' : 'text-[#9ca3af]'}
+                  text-sm sm:text-base font-medium
+                  ${selectedValue === index ? 'text-white' : 'text-[#ececf1]'}
                 `}>
                 {option}
               </Text>
@@ -312,112 +317,6 @@ const formatTime = (seconds: number) => {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 };
 
-// Update VoiceInfoBubble component
-const VoiceInfoBubble = ({ 
-  isRecording, 
-  recordingTime,
-  recordingUri,
-  onPlay,
-  isPlaying,
-  onStop,
-  onClose 
-}: { 
-  isRecording: boolean; 
-  recordingTime: number;
-  recordingUri: string | null;
-  onPlay: (uri: string) => void;
-  isPlaying: boolean;
-  onStop: () => void;
-  onClose: () => void;
-}) => {
-  if (!isRecording && !recordingUri) return null;
-
-  return (
-    <View className="absolute -top-24 left-0 right-0 mx-4">
-      <View className="bg-[#10a37f] rounded-2xl p-4 shadow-lg">
-        <View className="flex-row items-center justify-between">
-          <View className="flex-row items-center gap-3">
-            <View className="w-10 h-10 rounded-full bg-white/10 items-center justify-center">
-              {isRecording ? (
-                <Mic size={20} color="white" />
-              ) : (
-                <TouchableOpacity
-                  onPress={() => recordingUri && (isPlaying ? onStop() : onPlay(recordingUri))}
-                  className="w-10 h-10 rounded-full bg-white/10 items-center justify-center"
-                >
-                  {isPlaying ? (
-                    <Pause size={20} color="white" />
-                  ) : (
-                    <Play size={20} color="white" />
-                  )}
-                </TouchableOpacity>
-              )}
-            </View>
-            <View>
-              <Text className="text-white font-semibold text-base">
-                {isRecording ? 'Recording...' : 'Preview Recording'}
-              </Text>
-              <Text className="text-white/90 text-sm">
-                {formatTime(recordingTime)}
-              </Text>
-            </View>
-          </View>
-          <View className="flex-row items-center gap-2">
-            <AudioWave isRecording={isRecording} color="white" />
-            {!isRecording && (
-              <TouchableOpacity 
-                onPress={onClose}
-                className="p-1.5 rounded-full bg-white/10">
-                <X size={14} color="white" />
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
-      </View>
-      <View 
-        className="absolute -bottom-2 left-1/4 w-4 h-4 bg-[#10a37f] shadow-lg"
-        style={{
-          transform: [{ rotate: '45deg' }]
-        }}
-      />
-    </View>
-  );
-};
-
-// Update VoiceBubble component for better positioning
-const VoiceBubble = ({ isVisible, onClose }: { isVisible: boolean; onClose: () => void }) => {
-  if (!isVisible) return null;
-
-  return (
-    <View className="absolute -top-32 left-0 right-0 mx-4">
-      <View className="bg-[#10a37f] rounded-2xl p-4">
-        <View className="flex-row items-center gap-3 mb-2">
-          <View className="w-8 h-8 rounded-full bg-white/10 items-center justify-center">
-            <Mic size={18} color="white" />
-          </View>
-          <View className="flex-1">
-            <Text className="text-white font-medium">Voice Input</Text>
-            <Text className="text-white/80 text-xs">Tap mic to start recording</Text>
-          </View>
-          <TouchableOpacity 
-            onPress={onClose}
-            className="p-1.5 rounded-full bg-white/10">
-            <X size={14} color="white" />
-          </TouchableOpacity>
-        </View>
-      </View>
-      <View 
-        className="absolute -bottom-2 left-3/4 w-4 h-4 bg-[#10a37f]"
-        style={{
-          transform: [
-            { rotate: '45deg' }
-          ]
-        }}
-      />
-    </View>
-  );
-};
-
 // Update the ModalSettings component to use the new sections
 const ModalSettings = ({
   visible,
@@ -434,15 +333,18 @@ const ModalSettings = ({
     visible={visible}
     animationType="slide"
     transparent={true}
+    statusBarTranslucent={true}  // Added for Android
     onRequestClose={closeOptions}>
     <View className="flex-1 bg-black/50">
-      <View className="mt-auto h-[75%] bg-[#343541] rounded-t-3xl">
-        <View className="px-4 mb-4 flex-row items-center justify-between border-b border-[#565869]/30 py-4">
-          <Text className="text-xl font-bold text-white">Script Settings</Text>
+      <View className="mt-auto h-[80%] bg-[#1e1f25] rounded-t-3xl elevation-5">
+        <View className="px-4 mb-4 flex-row items-center justify-between border-b border-[#383942] py-4">
+          <Text className="text-xl font-bold text-white android:font-medium">
+            Script Settings
+          </Text>
           <TouchableOpacity 
-            className="p-1 active:opacity-70"
+            className="p-2 rounded-full active:bg-[#2a2b32]"
             onPress={closeOptions}>
-            <X size={26} color="#9ca3af" />
+            <X size={24} color="#9ca3af" />
           </TouchableOpacity>
         </View>
         
@@ -653,6 +555,11 @@ const MainPage = () => {
 
   // Update generateScript with enhanced feedback
   const generateScript = async (isRegenerate: boolean = false) => {
+    if (!CONFIG.GEMINI_API_KEY) {
+      showError('Missing API configuration');
+      return;
+    }
+    
     if (!topic.trim()) {
       triggerHaptic();
       showError('Please enter a topic first');
@@ -726,10 +633,6 @@ const MainPage = () => {
 
         Keep the tone ${scriptOptions.style.options[scriptOptions.style.value].toLowerCase()} and optimize for ${scriptOptions.platform.options[scriptOptions.platform.value]} audience retention.
       `.trim();
-
-      if (!CONFIG.GEMINI_API_KEY) {
-        throw new Error('Missing API key configuration');
-      }
 
       const result = await model.generateContent(prompt);
       const generatedText = await result.response.text();
@@ -808,30 +711,38 @@ const MainPage = () => {
     }, 1000);
   }, []);
 
-  // Update topic suggestions UI
+  // Update topicSuggestions array
   const topicSuggestions = [
     { 
       icon: <Youtube size={24} color="#10a37f" />, 
       text: 'Tech Review',
-      description: 'Create engaging product reviews',
+      description: 'Product reviews',
     },
     { 
       icon: <Film size={24} color="#10a37f" />, 
-      text: 'Film Analysis',
-      description: 'Break down movies and shows',
+      text: 'Tutorial',
+      description: 'How-to guides',
     },
     { 
       icon: <Camera size={24} color="#10a37f" />, 
-      text: 'Photography tutorial',
+      text: 'Vlog',
+      description: 'Daily content',
     },
     { 
       icon: <Mic size={24} color="#10a37f" />, 
-      text: 'Podcast episode',
+      text: 'Podcast',
+      description: 'Audio content',
     },
     { 
       icon: <Sparkles size={24} color="#10a37f" />, 
-      text: 'Viral challenge idea',
-    }
+      text: 'Shorts',
+      description: 'Quick videos',
+    },
+    { 
+      icon: <BarChart2 size={24} color="#10a37f" />, 
+      text: 'Analysis',
+      description: 'Deep dives',
+    },
   ];
 
   // Remove bottomSheet ref and snapPoints
@@ -897,17 +808,14 @@ const MainPage = () => {
     info(`Template selected: ${topic}`);
   };
 
-  // Update handleMicPress
+  // Update handleMicPress to remove bubble logic
   const handleMicPress = () => {
     if (isRecording) {
       stopListening();
-    } else if (!showVoiceBubble) {
-      setShowVoiceBubble(true);
-      triggerHaptic();
     } else {
-      setShowVoiceBubble(false);
       startListening();
     }
+    triggerHaptic();
   };
 
   // Enhanced speech recognition handler
@@ -972,8 +880,12 @@ const MainPage = () => {
         interimResults: true,
         continuous: true,
         androidIntentOptions: {
-          EXTRA_LANGUAGE_MODEL: "web_search",
-          EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS: 10000,
+          EXTRA_LANGUAGE_MODEL: "free_form",
+          EXTRA_MAX_RESULTS: 1,
+          EXTRA_PARTIAL_RESULTS: true,
+          EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS: 0,
+          EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS: 1500,
+          EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS: 1000,
         },
         recordingOptions: {
           persist: true,
@@ -1036,108 +948,106 @@ const MainPage = () => {
 
   
 
-  // Update renderBottomBar for better spacing and touch targets
+  // Update renderBottomBar with SlidersHorizontal instead of Plus
   const renderBottomBar = () => (
-    <View className="absolute bottom-0 left-0 right-0 bg-[#1e1f25] px-4 py-4 border-t border-[#2a2b32]">
-      <View className="relative">
-        <VoiceInfoBubble 
-          isRecording={isRecording} 
-          recordingTime={recordingTime}
-          recordingUri={recordingUri}
-          onPlay={playRecording}
-          isPlaying={isPlaying}
-          onStop={stopPlayback}
-          onClose={handleCloseRecording}
-        />
-        
-        {showVoiceBubble && !isRecording && (
-          <VoiceBubble 
-            isVisible={showVoiceBubble} 
-            onClose={() => setShowVoiceBubble(false)} 
-          />
-        )}
-
-        <View className="flex-row items-center gap-4">
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      className="absolute bottom-0 left-0 right-0">
+      <View className="bg-[#1e1f25] px-4 py-2 border-t border-[#383942] elevation-6">
+        <View className="flex-row items-center gap-2">
+          {/* Changed Plus to SlidersHorizontal */}
           <TouchableOpacity 
             onPress={openOptions}
-            className="w-12 h-12 rounded-full bg-[#2a2b32] items-center justify-center active:bg-[#343541]">
-            <SlidersHorizontal size={22} color="#9ca3af" />
+            className="p-2 rounded-full active:bg-[#343541]">
+            <SlidersHorizontal size={24} color="#ececf1" />
           </TouchableOpacity>
 
-          <View className="flex-1 flex-row items-center bg-[#2a2b32] rounded-full px-4 py-2.5">
+          {/* Input Container */}
+          <View className="flex-1 flex-row items-center bg-[#2a2b32] border border-[#383942] rounded-full px-4 py-2 min-h-[44px]">
+            {/* Text Input */}
             <TextInput
-              placeholder="What's your video about?"
-              placeholderTextColor="#9ca3af80"
-              value={topic}
-              onChangeText={setTopic}
-              className="flex-1 text-white text-base mr-2"
-              style={{ fontSize: 16 }}
+              placeholder={isRecording ? "Listening..." : "Message"}
+              placeholderTextColor="#9ca3af"
+              value={isRecording ? (transcript || 'Speak now...') : topic}
+              onChangeText={isRecording ? undefined : setTopic}
+              className="flex-1 text-[#ececf1] text-base android:py-1"
               multiline
+              numberOfLines={1}
+              maxLength={500}
+              style={{
+                maxHeight: 100,
+                minHeight: 24,
+              }}
+              editable={!isRecording}
             />
-            
-            <View className="flex-row items-center gap-2">
-              <TouchableOpacity 
-                onPress={handleMicPress}
-                className={`p-3 rounded-full ${isRecording ? 'bg-[#10a37f]' : ''} active:bg-[#343541]`}>
-                {isRecording ? (
-                  <>
-                    <Mic size={22} color="white" />
-                    <View className="absolute -top-0.5 -right-0.5 w-3 h-3">
-                      <View className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                    </View>
-                  </>
-                ) : (
-                  <Mic size={22} color="#9ca3af" />
-                )}
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                onPress={() => generateScript(false)}
-                disabled={loading}
-                className="p-3 rounded-full active:bg-[#343541]">
-                <Sparkles 
-                  size={22} 
-                  color={loading ? "#9ca3af80" : "#10a37f"} 
-                />
-              </TouchableOpacity>
-            </View>
+
+            {/* Voice Input Button */}
+            <TouchableOpacity 
+              onPress={handleMicPress}
+              className={`ml-2 p-2 rounded-full ${isRecording ? 'bg-[#10a37f]/20' : ''}`}>
+              {isRecording ? (
+                <View className="flex-row items-center gap-2">
+                  <AudioWave isRecording={true} color="#10a37f" size={24} />
+                  <TouchableOpacity 
+                    onPress={stopListening}
+                    className="p-1 rounded-full bg-[#ef4444]/20">
+                    <MicOff size={20} color="#ef4444" />
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <Mic size={24} color="#ececf1" />
+              )}
+            </TouchableOpacity>
+
+            {/* Generate/Send Button */}
+            <TouchableOpacity 
+              onPress={() => generateScript(false)}
+              disabled={loading || !topic.trim()}
+              className="ml-2">
+              {loading ? (
+                <ActivityIndicator size="small" color="#10a37f" />
+              ) : topic.trim() ? (
+                <Sparkles size={24} color="#10a37f" />
+              ) : (
+                <View className="w-6 h-6 rounded-full border-2 border-[#565869] items-center justify-center">
+                  <View className="w-3 h-3 rounded-full bg-[#565869]" />
+                </View>
+              )}
+            </TouchableOpacity>
           </View>
         </View>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 
-  // Update the suggestion card rendering
+  // Update renderSuggestions function
   const renderSuggestions = () => (
-    <View className="mb-6">
-      <ScrollView 
-        className="gap-3" 
-        contentContainerStyle={{
-          gap: 12, // Add explicit gap in contentContainerStyle
-          paddingHorizontal: 2 // Optional: add slight padding to avoid shadow clipping
-        }}>
-        {topicSuggestions.map((suggestion, index) => (
-          <TouchableOpacity
-            key={index}
-            onPress={() => handleTopicSelect(suggestion.text)}
-            className="flex-row items-center p-4 bg-[#2a2b32] rounded-xl border border-[#383942]">
-            <View className="w-12 h-12 rounded-xl bg-[#1e1f25] items-center justify-center mr-4">
-              {suggestion.icon}
-            </View>
-            <View className="flex-1">
-              <Text className="text-white text-lg font-medium mb-1">
-                {suggestion.text}
-              </Text>
-              {suggestion.description && (
-                <Text className="text-[#9ca3af] text-sm">
-                  {suggestion.description}
+    <View className="mb-4 sm:mb-6 px-2 sm:px-4 mt-40">
+      <View className="max-w-[600px] mx-auto">
+        <View className="flex-row flex-wrap justify-center gap-2 sm:gap-3">
+          {topicSuggestions.map((suggestion, index) => (
+            <TouchableOpacity
+              key={index}
+              onPress={() => handleTopicSelect(suggestion.text)}
+              className="w-[30%] max-w-[160px] p-3 sm:p-4 bg-[#2a2b32] rounded-xl border border-[#383942]">
+              <View className="items-center">
+                <View className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-[#1e1f25] items-center justify-center mb-2">
+                  {suggestion.icon}
+                </View>
+                <Text className="text-white text-sm sm:text-base font-medium text-center mb-1">
+                  {suggestion.text}
                 </Text>
-              )}
-            </View>
-            <ChevronRight size={24} color="#10a37f" />
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+                {suggestion.description && (
+                  <Text className="text-[#9ca3af] text-xs sm:text-sm text-center">
+                    {suggestion.description}
+                  </Text>
+                )}
+              </View>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
     </View>
   );
 
@@ -1279,23 +1189,23 @@ const MainPage = () => {
   // Update script display container for better readability
   const renderScriptDisplay = () => (
     script && (
-      <View className="rounded-3xl bg-[#282A36] overflow-hidden border border-[#383A59] animate-fadeIn mb-20">
-        <View className="flex-row items-center justify-between p-4 bg-[#40414f] border-b border-[#383A59]">
-          <Text className="text-[#ececf1] text-lg font-bold">Generated Script</Text>
-          <View className="flex-row gap-3">
+      <View className="rounded-2xl sm:rounded-3xl bg-[#282A36] overflow-hidden border border-[#383A59] animate-fadeIn mb-16 sm:mb-20">
+        <View className="flex-row items-center justify-between p-3 sm:p-4 bg-[#40414f] border-b border-[#383A59]">
+          <Text className="text-[#ececf1] text-base sm:text-lg font-bold">Generated Script</Text>
+          <View className="flex-row gap-2 sm:gap-3">
             <TouchableOpacity 
-              className="p-2.5 rounded-xl bg-[#343541] active:bg-[#2a2b32]"
+              className="p-2 sm:p-2.5 rounded-xl bg-[#343541] active:bg-[#2a2b32]"
               onPress={handleCopyToClipboard}>
-              <Copy size={20} color="#10a37f" />
+              <Copy size={18} color="#10a37f" />
             </TouchableOpacity>
             <TouchableOpacity 
-              className="p-2.5 rounded-xl bg-[#343541] active:bg-[#2a2b32]"
+              className="p-2 sm:p-2.5 rounded-xl bg-[#343541] active:bg-[#2a2b32]"
               onPress={handleFileShare}>
-              <Share2 size={20} color="#10a37f" />
+              <Share2 size={18} color="#10a37f" />
             </TouchableOpacity>
           </View>
         </View>
-        <View className="p-5">
+        <View className="p-4 sm:p-5">
           <MarkdownContent content={script} />
         </View>
       </View>
@@ -1337,19 +1247,26 @@ const MainPage = () => {
     setWaveformScale(1 + (volume / 20)); // Subtle scaling based on volume
   });
 
-  // Cleanup function for audio resources
+  // Improve audio cleanup
   useEffect(() => {
+    const cleanup = async () => {
+      try {
+        if (sound) {
+          await sound.unloadAsync();
+        }
+        if (isRecording) {
+          await ExpoSpeechRecognitionModule.abort();
+        }
+        if (recordingTimeout.current) {
+          clearTimeout(recordingTimeout.current);
+        }
+      } catch (error) {
+        console.error('Cleanup error:', error);
+      }
+    };
+
     return () => {
-      // Cleanup on component unmount
-      if (sound) {
-        sound.unloadAsync();
-      }
-      if (isRecording) {
-        ExpoSpeechRecognitionModule.abort();
-      }
-      if (recordingTimeout.current) {
-        clearTimeout(recordingTimeout.current);
-      }
+      cleanup();
     };
   }, [sound, isRecording]);
 
@@ -1367,16 +1284,17 @@ const MainPage = () => {
 
   return (
     <SafeAreaView className="flex-1 bg-[#1e1f25]">
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        className="flex-1">
-        
+      <View className="flex-1">
         <ScrollView
           className="flex-1"
           contentContainerStyle={{ 
-            padding: 16,
-            paddingBottom: Platform.select({ ios: 140, android: 160 }) 
+            padding: 12,
+            paddingBottom: Platform.select({ 
+              ios: 180,  // Increased padding for iOS
+              android: 160 // Increased padding for Android
+            }) 
           }}
+          keyboardShouldPersistTaps="handled"
           refreshControl={
             <RefreshControl
               refreshing={isRefreshing}
@@ -1406,8 +1324,7 @@ const MainPage = () => {
             <GeneratingAnimation onCancel={stopGeneration} />
           </View>
         )}
-
-      </KeyboardAvoidingView>
+      </View>
     </SafeAreaView>
   );
 };
